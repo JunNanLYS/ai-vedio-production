@@ -1,0 +1,16 @@
+[project]
+name = "ai-vedio-production"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.135.2",
+    "loguru>=0.7.3",
+    "pillow>=12.1.1",
+    "python-multipart>=0.0.22",
+    "sqlmodel>=0.0.37",
+    "uvicorn>=0.42.0",
+    "opencv-python>=4.10.0.84",
+    "nuitka>=4.0.7",
+]

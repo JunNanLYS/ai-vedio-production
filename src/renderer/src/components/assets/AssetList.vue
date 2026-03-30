@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { FileText, Image, Music, Video, File, Trash2, Pencil, ExternalLink, Check, X, Upload, FileSpreadsheet } from 'lucide-vue-next'
+import { FileText, Image, Music, Video, File, Trash2, Pencil, ExternalLink, Check, X, Upload, FileSpreadsheet, Copy } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import { assetsService } from '@/services/assets'
 import type { Asset } from '@/types'
@@ -101,6 +101,16 @@ const handleOpen = async (asset: Asset, event: Event): Promise<void> => {
     await window.api.openFile(result.path)
   } catch (error) {
     console.error('打开文件失败:', error)
+  }
+}
+
+const handleCopyContent = async (asset: Asset, event: Event): Promise<void> => {
+  event.stopPropagation()
+  try {
+    const result = await assetsService.getContent(asset.id)
+    await navigator.clipboard.writeText(result.content)
+  } catch (error) {
+    console.error('复制内容失败:', error)
   }
 }
 
@@ -245,14 +255,14 @@ onMounted(() => {
       <p class="text-xs mt-1">拖拽文件到此处或点击上传按钮添加资产</p>
     </div>
 
-    <div v-else class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 p-4">
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 p-4">
       <div
         v-for="asset in assets"
         :key="asset.id"
         @click="handleCardClick(asset)"
         :class="
           cn(
-            'group relative bg-white/70 dark:bg-zinc-800/50 backdrop-blur-xl rounded-2xl p-4 cursor-pointer',
+            'group relative bg-white/70 dark:bg-zinc-800/50 backdrop-blur-xl rounded-2xl p-5 cursor-pointer',
             'border border-black/5 dark:border-white/5',
             'shadow-xl shadow-black/5 dark:shadow-black/20',
             'transition-transform transition-shadow duration-300 hover:scale-[1.02] hover:shadow-2xl',
@@ -264,14 +274,22 @@ onMounted(() => {
           <div
             :class="
               cn(
-                'w-16 h-16 rounded-2xl flex items-center justify-center mb-3 overflow-hidden',
+                'w-24 h-24 rounded-2xl flex items-center justify-center mb-4 overflow-hidden',
                 'bg-gradient-to-br from-zinc-100 to-zinc-50 dark:from-zinc-700 dark:to-zinc-800',
                 'shadow-inner'
               )
             "
           >
+            <div
+              v-if="asset.uploading"
+              class="w-full h-full flex items-center justify-center bg-zinc-100 dark:bg-zinc-800"
+            >
+              <div class="relative">
+                <div class="animate-spin rounded-full h-10 w-10 border-2 border-zinc-200 dark:border-zinc-600 border-t-zinc-600 dark:border-t-zinc-300" />
+              </div>
+            </div>
             <img
-              v-if="(asset.category === 'image' || asset.category === 'video') && previewUrls.get(asset.id)"
+              v-else-if="(asset.category === 'image' || asset.category === 'video') && previewUrls.get(asset.id)"
               :src="previewUrls.get(asset.id)"
               :alt="asset.name"
               class="w-full h-full object-cover"
@@ -280,7 +298,7 @@ onMounted(() => {
             <component
               v-else
               :is="getFileIcon(asset.file_type, asset.category)"
-              :size="28"
+              :size="40"
               :stroke-width="1.5"
               class="text-zinc-600 dark:text-zinc-300"
             />
@@ -291,35 +309,41 @@ onMounted(() => {
               <input
                 v-model="newName"
                 type="text"
-                class="min-w-0 flex-1 h-7 px-2 text-xs rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                class="min-w-0 flex-1 h-8 px-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-400"
                 @click.stop
                 @keyup.enter="confirmRename(asset)"
                 @keyup.esc="cancelRename"
               />
               <button
                 @click.stop="confirmRename(asset)"
-                class="p-1 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors shrink-0"
+                class="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors shrink-0"
               >
-                <Check :size="12" class="text-green-500" />
+                <Check :size="14" class="text-green-500" />
               </button>
               <button
                 @click.stop="cancelRename"
-                class="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors shrink-0"
+                class="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors shrink-0"
               >
-                <X :size="12" class="text-red-400" />
+                <X :size="14" class="text-red-400" />
               </button>
             </div>
           </div>
           <h3
             v-else
-            class="text-sm font-medium text-zinc-800 dark:text-zinc-200 text-center truncate w-full mb-1"
+            class="text-base font-medium text-zinc-800 dark:text-zinc-200 text-center truncate w-full mb-2"
           >
             {{ asset.name }}
           </h3>
 
           <div class="flex items-center gap-2 text-xs text-zinc-400">
-            <span class="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700">
+            <span class="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700">
               {{ getFileTypeLabel(asset.file_type) }}
+            </span>
+            <span
+              v-if="asset.uploading"
+              class="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-500"
+            >
+              上传中...
             </span>
           </div>
 
@@ -329,6 +353,7 @@ onMounted(() => {
         </div>
 
         <div
+          v-if="!asset.uploading"
           :class="
             cn(
               'absolute top-2 right-2 flex gap-1',
@@ -336,6 +361,20 @@ onMounted(() => {
             )
           "
         >
+          <button
+            v-if="asset.category === 'prompt'"
+            @click="handleCopyContent(asset, $event)"
+            :class="
+              cn(
+                'p-1.5 rounded-lg',
+                'bg-green-50 dark:bg-green-900/30 text-green-500',
+                'hover:bg-green-100 dark:hover:bg-green-900/50'
+              )
+            "
+            title="复制内容"
+          >
+            <Copy :size="14" />
+          </button>
           <button
             @click="handleOpen(asset, $event)"
             :class="

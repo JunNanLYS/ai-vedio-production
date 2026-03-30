@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
+import { autoUpdater } from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
 
 // 后端端口号
@@ -13,6 +14,21 @@ const backendLogs: string[] = []
 const MAX_LOGS = 1000
 // 日志订阅的窗口集合
 const logSubscribers = new Set<BrowserWindow>()
+// 主窗口引用
+let mainWindow: BrowserWindow | null = null
+// 更新信息
+let updateInfo: {
+  available: boolean
+  version?: string
+  releaseDate?: string
+  releaseNotes?: string
+  downloading: boolean
+  progress: number
+} = {
+  available: false,
+  downloading: false,
+  progress: 0
+}
 
 /**
  * 添加日志并广播给订阅者
@@ -125,11 +141,9 @@ function startBackend(): void {
 function stopBackend(): void {
   if (backendProcess) {
     console.log('[Backend] 正在停止后端进程...')
-    // Windows 使用 taskkill 强制结束进程树
     if (process.platform === 'win32') {
       spawn('taskkill', ['/pid', String(backendProcess.pid), '/f', '/t'])
     } else {
-      // macOS/Linux 使用 SIGTERM
       backendProcess.kill('SIGTERM')
     }
     backendProcess = null
@@ -137,9 +151,92 @@ function stopBackend(): void {
   }
 }
 
+function setupAutoUpdater(): void {
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.forceDevUpdateConfig = true
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[Updater] 正在检查更新...')
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[Updater] 发现新版本:', info.version)
+    updateInfo = {
+      available: true,
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: typeof info.releaseNotes === 'string' 
+        ? info.releaseNotes 
+        : info.releaseNotes?.map(n => n.note).join('\n'),
+      downloading: false,
+      progress: 0
+    }
+    mainWindow?.webContents.send('update-available', updateInfo)
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[Updater] 当前已是最新版本')
+    updateInfo = { available: false, downloading: false, progress: 0 }
+    mainWindow?.webContents.send('update-not-available')
+  })
+
+  autoUpdater.on('download-progress', (progressInfo) => {
+    console.log(`[Updater] 下载进度: ${progressInfo.percent.toFixed(1)}%`)
+    updateInfo.progress = progressInfo.percent
+    updateInfo.downloading = true
+    mainWindow?.webContents.send('update-progress', {
+      percent: progressInfo.percent,
+      transferred: progressInfo.transferred,
+      total: progressInfo.total,
+      bytesPerSecond: progressInfo.bytesPerSecond
+    })
+  })
+
+  autoUpdater.on('update-downloaded', () => {
+    console.log('[Updater] 更新下载完成')
+    updateInfo.downloading = false
+    updateInfo.progress = 100
+    mainWindow?.webContents.send('update-downloaded')
+  })
+
+  autoUpdater.on('error', (error) => {
+    console.error('[Updater] 更新错误:', error)
+    updateInfo.downloading = false
+    mainWindow?.webContents.send('update-error', error.message)
+  })
+}
+
+async function checkForUpdates(silent: boolean = false): Promise<void> {
+  try {
+    await autoUpdater.checkForUpdates()
+  } catch (error) {
+    console.error('[Updater] 检查更新失败:', error)
+    if (!silent) {
+      mainWindow?.webContents.send('update-error', '检查更新失败')
+    }
+  }
+}
+
+async function downloadUpdate(): Promise<void> {
+  if (updateInfo.available && !updateInfo.downloading) {
+    try {
+      updateInfo.downloading = true
+      await autoUpdater.downloadUpdate()
+    } catch (error) {
+      console.error('[Updater] 下载更新失败:', error)
+      updateInfo.downloading = false
+      mainWindow?.webContents.send('update-error', '下载更新失败')
+    }
+  }
+}
+
+function quitAndInstall(): void {
+  autoUpdater.quitAndInstall(false, true)
+}
+
 function createWindow(): void {
-  // 创建浏览器窗口
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     show: false,
@@ -150,12 +247,12 @@ function createWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      webSecurity: false  // 允许跨域请求
+      webSecurity: false
     }
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    mainWindow?.show()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -163,8 +260,6 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // 基于 electron-vite cli 的 HMR
-  // 开发环境加载远程 URL，生产环境加载本地 html 文件
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -265,35 +360,56 @@ ipcMain.handle('window-is-maximized', (event) => {
   return win?.isMaximized() ?? false
 })
 
+// IPC handler: 检查更新
+ipcMain.handle('check-for-updates', async (_, silent: boolean = false) => {
+  await checkForUpdates(silent)
+})
+
+// IPC handler: 下载更新
+ipcMain.handle('download-update', async () => {
+  await downloadUpdate()
+})
+
+// IPC handler: 安装更新
+ipcMain.handle('quit-and-install', () => {
+  quitAndInstall()
+})
+
+// IPC handler: 获取更新信息
+ipcMain.handle('get-update-info', () => {
+  return updateInfo
+})
+
+// IPC handler: 获取应用版本
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion()
+})
+
 // Electron 完成初始化并准备创建浏览器窗口时调用此方法
 // 某些 API 只能在此事件发生后才能使用
 app.whenReady().then(() => {
-  // 为 Windows 设置应用用户模型 ID
   electronApp.setAppUserModelId('com.electron')
 
-  // 开发环境默认通过 F12 打开或关闭 DevTools
-  // 生产环境忽略 CommandOrControl + R
-  // 参见 https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // 启动 Python 后端
+  setupAutoUpdater()
+
   startBackend()
 
   createWindow()
 
+  setTimeout(() => {
+    checkForUpdates(true)
+  }, 3000)
+
   app.on('activate', function () {
-    // 在 macOS 上，当点击 dock 图标且没有其他窗口打开时，
-    // 通常会在应用中重新创建一个窗口
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// 当所有窗口都关闭时退出应用，macOS 除外
-// 在 macOS 上，应用及其菜单栏通常会保持活动状态，直到用户使用 Cmd + Q 明确退出
 app.on('window-all-closed', () => {
-  // 停止后端进程
   stopBackend()
 
   if (process.platform !== 'darwin') {
@@ -301,7 +417,6 @@ app.on('window-all-closed', () => {
   }
 })
 
-// 应用退出前确保后端进程已停止
 app.on('before-quit', () => {
   stopBackend()
 })

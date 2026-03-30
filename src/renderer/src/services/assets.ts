@@ -24,6 +24,7 @@ export const assetsService = {
   delete: (id: number) => api.del(`/api/assets/${id}`),
   rename: (id: number, newName: string) => api.put<Asset>(`/api/assets/${id}/rename`, { new_name: newName }),
   getFilePath: (id: number) => api.get<{ path: string }>(`/api/assets/${id}/path`),
+  getContent: (id: number) => api.get<{ content: string; name: string }>(`/api/assets/${id}/content`),
   getPreviewUrl: async (id: number): Promise<string> => {
     const baseUrl = await getBackendUrl()
     return `${baseUrl}/api/assets/${id}/preview`

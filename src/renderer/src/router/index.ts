@@ -1,7 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
-// 路由配置
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
@@ -36,6 +35,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Connection',
     component: () => import('../views/ConnectionView.vue'),
     meta: { title: '连通测试' }
+  },
+  {
+    path: '/update',
+    name: 'Update',
+    component: () => import('../views/UpdateView.vue'),
+    meta: { title: '软件更新' }
   }
 ]
 

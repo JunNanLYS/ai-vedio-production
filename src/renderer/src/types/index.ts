@@ -101,19 +101,118 @@ export interface SubCategory {
 export interface Asset {
   id: number
   name: string
-  category: 'prompt' | 'image' | 'audio' | 'video' | 'document'
+  category: 'prompt' | 'image' | 'audio' | 'video' | 'document' | 'canvas'
   sub_category: string
   file_path: string
   file_type: string
   project_id: number | null
   created_at: string
+  uploading?: boolean
+  tempId?: string
 }
 
 export interface CreateAssetRequest {
   name: string
-  category: 'prompt' | 'image' | 'audio' | 'video' | 'document'
+  category: 'prompt' | 'image' | 'audio' | 'video' | 'document' | 'canvas'
   sub_category: string
   file_path: string
   file_type: string
   project_id?: number
+}
+
+// 画布节点类型
+export type CanvasNodeType = 'asset' | 'upload-image' | 'generate-image' | 'text-annotation'
+
+// 图片生成模型类型
+export type ImageGenModel = 'nano-banana-2' | 'nano-banana-pro'
+
+// 图片比例类型
+export type ImageAspectRatio =
+  | 'auto'
+  | '1:1'
+  | '1:4'
+  | '1:8'
+  | '2:3'
+  | '3:2'
+  | '3:4'
+  | '4:1'
+  | '4:3'
+  | '4:5'
+  | '5:4'
+  | '8:1'
+  | '9:16'
+  | '16:9'
+  | '21:9'
+
+// 分辨率类型
+export type ImageResolution = '1k' | '2k' | '4k'
+
+// 输出格式类型
+export type ImageOutputFormat = 'png' | 'jpg'
+
+// 画布节点
+export interface CanvasNode {
+  id: string
+  type: CanvasNodeType
+  assetId?: number
+  x: number
+  y: number
+  width: number
+  height: number
+  name: string
+  category?: 'prompt' | 'image' | 'audio' | 'video' | 'document' | 'canvas'
+  fileType?: string
+  filePath?: string
+  localImagePath?: string
+  prompt?: string
+  text?: string
+  referenceImages?: { nodeId: string; order: number }[]
+  fileSize?: number
+  // 生成图片配置
+  genModel?: ImageGenModel
+  aspectRatio?: ImageAspectRatio
+  resolution?: ImageResolution
+  outputFormat?: ImageOutputFormat
+}
+
+// 画布连接
+export interface CanvasConnection {
+  id: string
+  sourceId: string
+  targetId: string
+  type?: 'reference' | 'default'
+  order?: number
+}
+
+// 画布状态
+export interface CanvasState {
+  nodes: CanvasNode[]
+  connections: CanvasConnection[]
+  viewport: {
+    x: number
+    y: number
+    scale: number
+  }
+}
+
+// 画布资产
+export interface CanvasAsset {
+  id: number
+  name: string
+  nodes: CanvasNode[]
+  connections: CanvasConnection[]
+  viewport: { x: number; y: number; scale: number }
+  project_id: number | null
+  asset_id: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SaveCanvasRequest {
+  name: string
+  nodes: CanvasNode[]
+  connections: CanvasConnection[]
+  viewport: { x: number; y: number; scale: number }
+  project_id?: number
+  asset_id?: number
 }

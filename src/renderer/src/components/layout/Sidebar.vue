@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
-import { LayoutDashboard, FileText, GitBranch, FolderOpen, Wifi } from 'lucide-vue-next'
+import { LayoutDashboard, FileText, GitBranch, FolderOpen, Wifi, RefreshCw } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,7 +17,8 @@ const navItems: NavItem[] = [
   { name: 'Orders', path: '/orders', icon: FileText, label: '订单管理' },
   { name: 'Workflows', path: '/workflows', icon: GitBranch, label: '工作流' },
   { name: 'Assets', path: '/assets', icon: FolderOpen, label: '资产管理' },
-  { name: 'Connection', path: '/connection', icon: Wifi, label: '连通测试' }
+  { name: 'Connection', path: '/connection', icon: Wifi, label: '连通测试' },
+  { name: 'Update', path: '/update', icon: RefreshCw, label: '软件更新' }
 ]
 
 const isActive = (path: string): boolean => {

@@ -177,10 +177,28 @@ const handleAssetRename = (id: number, newName: string): void => {
 }
 
 const handleUpload = async (file: File, category: string, subCategoryName: string): Promise<void> => {
+  const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  
+  const tempAsset: Asset = {
+    id: -1,
+    name: file.name,
+    category: category as 'prompt' | 'image' | 'audio' | 'video' | 'document',
+    sub_category: subCategoryName,
+    file_path: '',
+    file_type: file.name.split('.').pop() || '',
+    project_id: currentProject.value?.id || null,
+    created_at: new Date().toISOString(),
+    uploading: true,
+    tempId: tempId
+  }
+  
+  assets.value.unshift(tempAsset)
+  showUploadDialog.value = false
+  
   try {
     const uploadResult = await assetsService.upload(file, category, subCategoryName)
     
-    await assetsService.create({
+    const newAsset = await assetsService.create({
       name: file.name,
       category: category as 'prompt' | 'image' | 'audio' | 'video' | 'document',
       sub_category: subCategoryName,
@@ -188,11 +206,15 @@ const handleUpload = async (file: File, category: string, subCategoryName: strin
       file_type: file.name.split('.').pop() || ''
     })
     
-    await loadAssets()
-    showUploadDialog.value = false
+    const tempIndex = assets.value.findIndex(a => a.tempId === tempId)
+    if (tempIndex !== -1) {
+      assets.value[tempIndex] = newAsset
+    }
+    
     categoryTreeRef.value?.loadSubCategories()
   } catch (error) {
     console.error('上传资产失败:', error)
+    assets.value = assets.value.filter(a => a.tempId !== tempId)
   }
 }
 

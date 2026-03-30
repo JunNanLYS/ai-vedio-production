@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import {
   FileText,
   Image,
@@ -11,7 +11,8 @@ import {
   Trash2,
   X,
   Check,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Layout
 } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import { assetsService } from '@/services/assets'
@@ -37,17 +38,19 @@ const categories: Category[] = [
   { id: 'image', name: '图片', icon: Image },
   { id: 'audio', name: '声音', icon: Music },
   { id: 'video', name: '视频', icon: Video },
-  { id: 'document', name: '文档', icon: FileSpreadsheet }
+  { id: 'document', name: '文档', icon: FileSpreadsheet },
+  { id: 'canvas', name: '画布', icon: Layout }
 ]
 
 const subCategories = ref<SubCategory[]>([])
-const expandedCategories = ref<Set<string>>(new Set(['prompt', 'image', 'audio', 'video', 'document']))
+const expandedCategories = ref<Set<string>>(new Set())
 const newSubCategoryName = ref('')
 const addingToCategory = ref<string | null>(null)
 const deletingId = ref<number | null>(null)
+const newSubCategoryInputRef = ref<HTMLInputElement | null>(null)
 
 const getSubCategoriesByCategory = (categoryId: string): SubCategory[] => {
-  return subCategories.value.filter(sub => sub.category === categoryId)
+  return subCategories.value.filter((sub) => sub.category === categoryId)
 }
 
 const loadSubCategories = async (): Promise<void> => {
@@ -79,6 +82,9 @@ const handleSubCategoryClick = (categoryId: string, subCategory: SubCategory): v
 const startAddingSubCategory = (categoryId: string): void => {
   addingToCategory.value = categoryId
   newSubCategoryName.value = ''
+  nextTick(() => {
+    newSubCategoryInputRef.value?.focus()
+  })
 }
 
 const cancelAddingSubCategory = (): void => {
@@ -88,7 +94,7 @@ const cancelAddingSubCategory = (): void => {
 
 const confirmAddSubCategory = async (): Promise<void> => {
   if (!addingToCategory.value || !newSubCategoryName.value.trim()) return
-  
+
   try {
     const newSubCategory = await assetsService.createSubCategory(
       addingToCategory.value,
@@ -103,13 +109,17 @@ const confirmAddSubCategory = async (): Promise<void> => {
 
 const handleDeleteSubCategory = async (subCategory: SubCategory, event: Event): Promise<void> => {
   event.stopPropagation()
-  
+
   if (!confirm(`确定要删除子分类"${subCategory.name}"吗？`)) return
-  
+
   deletingId.value = subCategory.id
   try {
     await assetsService.deleteSubCategory(subCategory.id)
-    subCategories.value = subCategories.value.filter(s => s.id !== subCategory.id)
+    subCategories.value = subCategories.value.filter((s) => s.id !== subCategory.id)
+    if (addingToCategory.value) {
+      addingToCategory.value = null
+      newSubCategoryName.value = ''
+    }
   } catch (error) {
     console.error('删除子分类失败:', error)
   } finally {
@@ -195,11 +205,9 @@ defineExpose({ loadSubCategories })
             </button>
           </div>
 
-          <div
-            v-if="addingToCategory === category.id"
-            class="flex items-center gap-1 px-2 py-2"
-          >
+          <div v-if="addingToCategory === category.id" class="flex items-center gap-1 px-2 py-2">
             <input
+              ref="newSubCategoryInputRef"
               v-model="newSubCategoryName"
               type="text"
               placeholder="输入名称"

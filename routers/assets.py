@@ -27,7 +27,8 @@ ALLOWED_EXTENSIONS = {
     "image": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"],
     "audio": [".mp3", ".wav", ".ogg", ".m4a", ".flac"],
     "video": [".mp4", ".mov", ".avi", ".mkv", ".webm"],
-    "document": [".ppt", ".pptx", ".doc", ".docx", ".pdf"]
+    "document": [".ppt", ".pptx", ".doc", ".docx", ".pdf"],
+    "canvas": [".json"]
 }
 
 CATEGORY_DIRS = {
@@ -35,7 +36,8 @@ CATEGORY_DIRS = {
     "image": "images",
     "audio": "audios",
     "video": "videos",
-    "document": "documents"
+    "document": "documents",
+    "canvas": "canvases"
 }
 
 DEFAULT_SUBCATEGORIES = {
@@ -47,7 +49,8 @@ DEFAULT_SUBCATEGORIES = {
         {"id": "ppt", "name": "PPT"},
         {"id": "word", "name": "Word"},
         {"id": "pdf", "name": "PDF"}
-    ]
+    ],
+    "canvas": []
 }
 
 
@@ -372,7 +375,7 @@ def get_subcategories(
     project_id: Optional[int] = None,
     session: Session = Depends(get_session)
 ) -> List[SubCategory]:
-    """获取子分类列表，自动补充缺失的默认子分类"""
+    """获取子分类列表"""
     effective_project_id = project_id or get_current_project_id()
     
     if not effective_project_id:
@@ -383,28 +386,6 @@ def get_subcategories(
     if category:
         statement = statement.where(SubCategory.category == category)
     
-    subcategories = session.exec(statement).all()
-    
-    categories_to_check = [category] if category else list(DEFAULT_SUBCATEGORIES.keys())
-    
-    for cat in categories_to_check:
-        existing_names = {sc.name for sc in subcategories if sc.category == cat}
-        default_subcats = DEFAULT_SUBCATEGORIES.get(cat, [])
-        
-        for default_subcat in default_subcats:
-            if default_subcat["name"] not in existing_names:
-                new_subcat = SubCategory(
-                    category=cat,
-                    name=default_subcat["name"],
-                    project_id=effective_project_id
-                )
-                session.add(new_subcat)
-    
-    session.commit()
-    
-    statement = select(SubCategory).where(SubCategory.project_id == effective_project_id)
-    if category:
-        statement = statement.where(SubCategory.category == category)
     subcategories = session.exec(statement).all()
     
     return subcategories
@@ -670,6 +651,38 @@ def get_asset_path(asset_id: int, session: Session = Depends(get_session)) -> di
         raise HTTPException(status_code=404, detail="文件不存在")
     
     return {"path": str(file_path)}
+
+
+@router.get("/assets/{asset_id}/content")
+def get_asset_content(asset_id: int, session: Session = Depends(get_session)) -> dict:
+    """获取资产文件内容（仅支持文本类资产）"""
+    statement = select(Asset).where(Asset.id == asset_id)
+    asset = session.exec(statement).first()
+    
+    if not asset:
+        raise HTTPException(status_code=404, detail="资产不存在")
+    
+    if asset.category != "prompt":
+        raise HTTPException(status_code=400, detail="只有Prompt类型资产支持读取内容")
+    
+    file_path = Path(asset.file_path)
+    if not file_path.is_absolute():
+        effective_project_id = get_current_project_id()
+        if effective_project_id:
+            project_statement = select(Project).where(Project.id == effective_project_id)
+            project = session.exec(project_statement).first()
+            if project:
+                file_path = Path(project.path) / asset.file_path
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    
+    try:
+        content = file_path.read_text(encoding="utf-8")
+        return {"content": content, "name": asset.name}
+    except Exception as e:
+        logger.error(f"读取文件内容失败: {e}")
+        raise HTTPException(status_code=500, detail=f"读取文件内容失败: {str(e)}")
 
 
 @router.get("/assets/{asset_id}/preview")

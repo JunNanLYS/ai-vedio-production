@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 import {
   Dialog,
   DialogContent,
@@ -40,8 +40,6 @@ const emit = defineEmits<{
 
 const selectedProjectId = ref<string>('')
 const canvasNameInput = ref('')
-
-const hasProjects = computed(() => props.projects.length > 0)
 
 watch(
   () => props.open,

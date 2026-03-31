@@ -27,6 +27,10 @@ const emit = defineEmits<{
   assetDrop: [asset: Asset, x: number, y: number]
   nodeGenerate: [id: string]
   viewportChange: [viewport: { x: number; y: number; scale: number }]
+  nodeConvertToAsset: [nodeId: string, assetId: number]
+  nodeOpenFile: [node: CanvasNode]
+  nodeOpenFolder: [node: CanvasNode]
+  nodeDeleteWithConfirm: [node: CanvasNode]
 }>()
 
 const canvasRef = ref<HTMLDivElement | null>(null)
@@ -153,7 +157,55 @@ const contextMenuItems = [
 
 const contextMenuPosition = ref({ x: 0, y: 0 })
 
+const findScrollableParent = (element: HTMLElement | null): HTMLElement | null => {
+  if (!element || element === containerRef.value) return null
+  
+  const style = window.getComputedStyle(element)
+  const overflowY = style.overflowY
+  const overflow = style.overflow
+  
+  if ((overflowY === 'auto' || overflowY === 'scroll' || overflow === 'auto' || overflow === 'scroll') &&
+      element.scrollHeight > element.clientHeight) {
+    return element
+  }
+  
+  return findScrollableParent(element.parentElement)
+}
+
+const canScroll = (element: HTMLElement, e: WheelEvent): boolean => {
+  const style = window.getComputedStyle(element)
+  const overflowY = style.overflowY
+  const overflow = style.overflow
+  
+  if (overflowY !== 'auto' && overflowY !== 'scroll' && overflow !== 'auto' && overflow !== 'scroll') {
+    return false
+  }
+  
+  if (element.scrollHeight <= element.clientHeight) {
+    return false
+  }
+  
+  const atTop = element.scrollTop === 0
+  const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1
+  
+  if (e.deltaY < 0 && atTop) {
+    return false
+  }
+  if (e.deltaY > 0 && atBottom) {
+    return false
+  }
+  
+  return true
+}
+
 const handleWheel = (e: WheelEvent) => {
+  const target = e.target as HTMLElement
+  const scrollableParent = findScrollableParent(target)
+  
+  if (scrollableParent && canScroll(scrollableParent, e)) {
+    return
+  }
+  
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault()
     const delta = e.deltaY > 0 ? -SCALE_STEP : SCALE_STEP
@@ -353,6 +405,10 @@ const handleNodeUpdate = (id: string, updates: Partial<CanvasNode>) => {
   emit('nodeUpdate', id, updates)
 }
 
+const handleNodeDeleteWithConfirm = (node: CanvasNode) => {
+  emit('nodeDeleteWithConfirm', node)
+}
+
 const startConnecting = (nodeId: string) => {
   isConnecting.value = true
   connectingFrom.value = nodeId
@@ -371,9 +427,11 @@ const finishConnecting = (targetId: string) => {
 
     if (sourceNode && targetNode) {
       const canConnect =
-        (sourceNode.type === 'upload-image' ||
-          (sourceNode.type === 'asset' && sourceNode.category === 'image')) &&
-        targetNode.type === 'generate-image'
+        ((sourceNode.type === 'upload-image' ||
+          (sourceNode.type === 'asset' && sourceNode.category === 'image') ||
+          sourceNode.type === 'generated-image') &&
+          targetNode.type === 'generate-image') ||
+        (sourceNode.type === 'generate-image' && targetNode.type === 'generated-image')
 
       if (canConnect) {
         emit('connectionCreate', connectingFrom.value, targetId)
@@ -578,7 +636,7 @@ defineExpose({
 <template>
   <div
     ref="containerRef"
-    class="relative w-full h-full overflow-hidden"
+    class="relative w-full h-full overflow-hidden select-none"
     :class="['bg-zinc-50 dark:bg-zinc-900', 'bg-grid-pattern']"
     :style="gridBackground"
     @wheel="handleWheel"
@@ -595,7 +653,7 @@ defineExpose({
       class="absolute top-0 left-0 w-full h-full pointer-events-none"
       :style="{ transform: canvasTransform, transformOrigin: '0 0' }"
     >
-      <svg class="absolute inset-0" style="width: 10000px; height: 10000px">
+      <svg class="absolute" style="width: 50000px; height: 50000px; left: -20000px; top: -20000px; overflow: visible" viewBox="-20000 -20000 50000 50000">
         <g
           v-for="connection in connections"
           :key="connection.id"
@@ -673,6 +731,10 @@ defineExpose({
         @resize="handleNodeResize(node.id, $event)"
         @update="handleNodeUpdate(node.id, $event)"
         @generate="emit('nodeGenerate', node.id)"
+        @convert-to-asset="emit('nodeConvertToAsset', node.id, $event)"
+        @delete="handleNodeDeleteWithConfirm"
+        @open-file="emit('nodeOpenFile', $event)"
+        @open-folder="emit('nodeOpenFolder', $event)"
       />
 
       <div
@@ -683,7 +745,7 @@ defineExpose({
 
       <div
         v-for="node in nodes.filter(
-          (n) => n.type === 'upload-image' || (n.type === 'asset' && n.category === 'image')
+          (n) => n.type === 'upload-image' || (n.type === 'asset' && n.category === 'image') || n.type === 'generate-image' || n.type === 'generated-image'
         )"
         :key="'connect-' + node.id"
         class="absolute pointer-events-auto"
@@ -693,7 +755,8 @@ defineExpose({
         }"
       >
         <button
-          class="w-4 h-4 rounded-full bg-purple-500 hover:bg-purple-600 text-white flex items-center justify-center transition-colors shadow-sm"
+          class="w-4 h-4 rounded-full text-white flex items-center justify-center transition-colors shadow-sm"
+          :class="node.type === 'generate-image' || node.type === 'generated-image' ? 'bg-green-500 hover:bg-green-600' : 'bg-purple-500 hover:bg-purple-600'"
           @mousedown.stop
           @click.stop="startConnecting(node.id)"
         >
@@ -711,7 +774,7 @@ defineExpose({
       </div>
 
       <div
-        v-for="node in nodes.filter((n) => n.type === 'generate-image')"
+        v-for="node in nodes.filter((n) => n.type === 'generate-image' || n.type === 'generated-image')"
         :key="'target-' + node.id"
         class="absolute pointer-events-auto"
         :style="{

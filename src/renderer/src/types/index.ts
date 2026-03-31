@@ -121,7 +121,10 @@ export interface CreateAssetRequest {
 }
 
 // 画布节点类型
-export type CanvasNodeType = 'asset' | 'upload-image' | 'generate-image' | 'text-annotation'
+export type CanvasNodeType = 'asset' | 'upload-image' | 'generate-image' | 'generated-image' | 'text-annotation'
+
+// 生成图片状态
+export type GeneratedImageStatus = 'pending' | 'generating' | 'success' | 'failed'
 
 // 图片生成模型类型
 export type ImageGenModel = 'nano-banana-2' | 'nano-banana-pro'
@@ -161,6 +164,7 @@ export interface CanvasNode {
   height: number
   name: string
   category?: 'prompt' | 'image' | 'audio' | 'video' | 'document' | 'canvas'
+  sub_category?: string
   fileType?: string
   filePath?: string
   localImagePath?: string
@@ -173,6 +177,12 @@ export interface CanvasNode {
   aspectRatio?: ImageAspectRatio
   resolution?: ImageResolution
   outputFormat?: ImageOutputFormat
+  // generated-image 节点专用属性
+  genStatus?: GeneratedImageStatus
+  genTaskId?: string
+  genError?: string
+  sourceNodeId?: string
+  genProgress?: number
 }
 
 // 画布连接

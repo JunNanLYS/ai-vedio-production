@@ -4,7 +4,10 @@ import type { CanvasNode } from '@/types'
 import { assetsService } from '@/services/assets'
 import UploadImageNode from './nodes/UploadImageNode.vue'
 import GenerateImageNode from './nodes/GenerateImageNode.vue'
+import GeneratedImageNode from './nodes/GeneratedImageNode.vue'
 import TextAnnotationNode from './nodes/TextAnnotationNode.vue'
+import { ContextMenu } from '@/components/ui/context-menu'
+import { useToast } from '@/components/ui/toast'
 
 interface Props {
   node: CanvasNode
@@ -21,7 +24,16 @@ const emit = defineEmits<{
   resize: [{ width: number; height: number; x?: number; y?: number }]
   update: [updates: Partial<CanvasNode>]
   generate: []
+  convertToAsset: [assetId: number]
+  delete: [id: string]
+  openFile: [node: CanvasNode]
+  openFolder: [node: CanvasNode]
+  mousedown: [event: MouseEvent]
 }>()
+
+const { toast } = useToast()
+const contextMenuRef = ref<InstanceType<typeof ContextMenu> | null>(null)
+const contextMenuPosition = ref({ x: 0, y: 0 })
 
 const categoryColors: Record<string, string> = {
   prompt: 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700',
@@ -74,10 +86,16 @@ const loadPreview = async () => {
     } finally {
       loading.value = false
     }
+  } else {
+    previewUrl.value = ''
   }
 }
 
-watch(() => props.node.assetId, loadPreview, { immediate: true })
+watch(
+  [() => props.node.assetId, () => props.node.type, () => props.node.fileType],
+  loadPreview,
+  { immediate: true }
+)
 
 const resizeState = ref<{
   isResizing: boolean
@@ -91,14 +109,14 @@ const resizeState = ref<{
 } | null>(null)
 
 const resizeCursors: Record<string, string> = {
-  'n': 'ns-resize',
-  's': 'ns-resize',
-  'e': 'ew-resize',
-  'w': 'ew-resize',
-  'ne': 'nesw-resize',
-  'sw': 'nesw-resize',
-  'nw': 'nwse-resize',
-  'se': 'nwse-resize'
+  n: 'ns-resize',
+  s: 'ns-resize',
+  e: 'ew-resize',
+  w: 'ew-resize',
+  ne: 'nesw-resize',
+  sw: 'nesw-resize',
+  nw: 'nwse-resize',
+  se: 'nwse-resize'
 }
 
 const getResizeCursor = (direction: string) => resizeCursors[direction] || 'default'
@@ -106,7 +124,7 @@ const getResizeCursor = (direction: string) => resizeCursors[direction] || 'defa
 const handleResizeStart = (e: MouseEvent, direction: string) => {
   e.preventDefault()
   e.stopPropagation()
-  
+
   resizeState.value = {
     isResizing: true,
     direction,
@@ -117,23 +135,24 @@ const handleResizeStart = (e: MouseEvent, direction: string) => {
     startNodeX: props.node.x,
     startNodeY: props.node.y
   }
-  
+
   document.addEventListener('mousemove', handleResizeMove)
   document.addEventListener('mouseup', handleResizeEnd)
 }
 
 const handleResizeMove = (e: MouseEvent) => {
   if (!resizeState.value) return
-  
-  const { direction, startX, startY, startWidth, startHeight, startNodeX, startNodeY } = resizeState.value
+
+  const { direction, startX, startY, startWidth, startHeight, startNodeX, startNodeY } =
+    resizeState.value
   const deltaX = (e.clientX - startX) / props.scale
   const deltaY = (e.clientY - startY) / props.scale
-  
+
   let newWidth = startWidth
   let newHeight = startHeight
   let newNodeX: number | undefined
   let newNodeY: number | undefined
-  
+
   if (direction.includes('e')) {
     newWidth = Math.max(MIN_WIDTH, startWidth + deltaX)
   }
@@ -160,7 +179,7 @@ const handleResizeMove = (e: MouseEvent) => {
       newNodeY = startNodeY + startHeight - MIN_HEIGHT
     }
   }
-  
+
   emit('resize', { width: newWidth, height: newHeight, x: newNodeX, y: newNodeY })
 }
 
@@ -173,6 +192,45 @@ const handleResizeEnd = () => {
 const handleUpdate = (updates: Partial<CanvasNode>) => {
   emit('update', updates)
 }
+
+const fileExists = computed(() => {
+  return !!(props.node.filePath || (props.node.assetId && props.node.fileType))
+})
+
+const nodeContextMenuItems = computed(() => [
+  {
+    label: '打开文件',
+    icon: 'file',
+    action: () => emit('openFile', props.node),
+    disabled: !fileExists.value,
+    tooltip: fileExists.value ? '' : '文件不存在'
+  },
+  {
+    label: '打开文件所在目录',
+    icon: 'folder',
+    action: () => emit('openFolder', props.node),
+    disabled: !fileExists.value,
+    tooltip: fileExists.value ? '' : '文件不存在'
+  },
+  {
+    label: '删除节点',
+    icon: 'trash',
+    action: handleDeleteNode,
+    disabled: false
+  }
+])
+
+const handleContextMenu = (e: MouseEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  
+  contextMenuPosition.value = { x: e.clientX, y: e.clientY }
+  contextMenuRef.value?.show(e.clientX, e.clientY)
+}
+
+const handleDeleteNode = () => {
+  emit('delete', props.node.id)
+}
 </script>
 
 <template>
@@ -183,6 +241,8 @@ const handleUpdate = (updates: Partial<CanvasNode>) => {
     :scale="scale"
     @resize="emit('resize', $event)"
     @update="handleUpdate"
+    @contextmenu="handleContextMenu"
+    @mousedown="emit('mousedown', $event)"
   />
   <GenerateImageNode
     v-else-if="node.type === 'generate-image'"
@@ -193,6 +253,19 @@ const handleUpdate = (updates: Partial<CanvasNode>) => {
     @resize="emit('resize', $event)"
     @update="handleUpdate"
     @generate="emit('generate')"
+    @contextmenu="handleContextMenu"
+    @mousedown="emit('mousedown', $event)"
+  />
+  <GeneratedImageNode
+    v-else-if="node.type === 'generated-image'"
+    :node="node"
+    :selected="selected"
+    :scale="scale"
+    @resize="emit('resize', $event)"
+    @update="handleUpdate"
+    @convert-to-asset="emit('convertToAsset', $event)"
+    @contextmenu="handleContextMenu"
+    @mousedown="emit('mousedown', $event)"
   />
   <TextAnnotationNode
     v-else-if="node.type === 'text-annotation'"
@@ -201,18 +274,25 @@ const handleUpdate = (updates: Partial<CanvasNode>) => {
     :scale="scale"
     @resize="emit('resize', $event)"
     @update="handleUpdate"
+    @contextmenu="handleContextMenu"
+    @mousedown="emit('mousedown', $event)"
   />
   <div
     v-else
-    class="absolute rounded-xl border-2 cursor-move transition-shadow duration-200 overflow-hidden group"
+    class="absolute rounded-xl border-2 cursor-move transition-shadow duration-200 overflow-hidden pointer-events-auto group"
     :class="[
-      categoryColors[node.category || 'document'] || 'bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700',
+      categoryColors[node.category || 'document'] ||
+        'bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700',
       selected ? 'ring-2 ring-blue-500 ring-offset-2 shadow-lg' : 'shadow-md hover:shadow-lg'
     ]"
     :style="nodeStyle"
+    @contextmenu="handleContextMenu"
+    @mousedown="emit('mousedown', $event)"
   >
     <div class="flex flex-col h-full">
-      <div class="flex items-center gap-2 px-3 py-2 border-b border-inherit bg-white/50 dark:bg-black/20">
+      <div
+        class="flex items-center gap-2 px-3 py-2 border-b border-inherit bg-white/50 dark:bg-black/20"
+      >
         <div :class="iconColor[node.category || 'document'] || 'text-zinc-600 dark:text-zinc-400'">
           <svg
             v-if="node.category === 'prompt'"
@@ -286,7 +366,9 @@ const handleUpdate = (updates: Partial<CanvasNode>) => {
         </span>
       </div>
 
-      <div class="flex-1 flex items-center justify-center overflow-hidden bg-black/5 dark:bg-black/20">
+      <div
+        class="flex-1 flex items-center justify-center overflow-hidden bg-black/5 dark:bg-black/20"
+      >
         <div v-if="loading" class="flex items-center justify-center">
           <div
             class="w-6 h-6 border-2 border-zinc-200 dark:border-zinc-700 border-t-zinc-600 dark:border-t-zinc-300 rounded-full animate-spin"
@@ -373,4 +455,6 @@ const handleUpdate = (updates: Partial<CanvasNode>) => {
       ></div>
     </template>
   </div>
+  
+  <ContextMenu ref="contextMenuRef" :items="nodeContextMenuItems" />
 </template>

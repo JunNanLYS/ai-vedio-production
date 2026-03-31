@@ -74,7 +74,13 @@ const handleMoveNext = (e: Event) => {
         @click="handleMovePrev"
       >
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M8 2L4 6L8 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path
+            d="M8 2L4 6L8 10"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
       </button>
       <button
@@ -85,7 +91,13 @@ const handleMoveNext = (e: Event) => {
         @click="handleMoveNext"
       >
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path
+            d="M4 2L8 6L4 10"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
       </button>
     </div>

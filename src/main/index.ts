@@ -16,6 +16,8 @@ const MAX_LOGS = 1000
 const logSubscribers = new Set<BrowserWindow>()
 // 主窗口引用
 let mainWindow: BrowserWindow | null = null
+// 是否允许关闭窗口
+let allowClose = false
 // 更新信息
 let updateInfo: {
   available: boolean
@@ -36,15 +38,15 @@ let updateInfo: {
 function appendLog(type: 'stdout' | 'stderr', content: string): void {
   const timestamp = new Date().toISOString()
   const logLine = `[${timestamp}] [${type.toUpperCase()}] ${content.trim()}`
-  
+
   // 添加到缓冲区
   backendLogs.push(logLine)
   if (backendLogs.length > MAX_LOGS) {
     backendLogs.shift()
   }
-  
+
   // 广播给所有订阅者
-  logSubscribers.forEach(win => {
+  logSubscribers.forEach((win) => {
     if (!win.isDestroyed()) {
       win.webContents.send('backend-log', logLine)
     }
@@ -62,7 +64,7 @@ function startBackend(): void {
     // __dirname = out/main，需要向上两级到达项目根目录
     const projectRoot = join(__dirname, '../..')
     console.log('[Backend] 项目根目录:', projectRoot)
-    
+
     backendProcess = spawn('uv', ['run', 'python', 'main.py'], {
       cwd: projectRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -71,22 +73,21 @@ function startBackend(): void {
   } else {
     // 生产环境：使用 Nuitka 打包后的可执行文件
     const resourcesPath = process.resourcesPath
-    
+
     // Windows: ai-video-backend.exe
     // macOS/Linux: ai-video-backend
-    const backendExeName = process.platform === 'win32' 
-      ? 'ai-video-backend.exe' 
-      : 'ai-video-backend'
-    
+    const backendExeName =
+      process.platform === 'win32' ? 'ai-video-backend.exe' : 'ai-video-backend'
+
     // 检查 backend 目录下的可执行文件
     const backendPath = join(resourcesPath, 'backend', backendExeName)
-    
+
     // 数据库存储在用户数据目录，覆盖安装时不会被删除
     const dbPath = join(app.getPath('userData'), 'ai_video_production.db')
     console.log('[Backend] 数据库路径:', dbPath)
-    
+
     console.log('[Backend] 生产环境后端路径:', backendPath)
-    
+
     backendProcess = spawn(backendPath, [], {
       cwd: join(resourcesPath, 'backend'),
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -166,9 +167,10 @@ function setupAutoUpdater(): void {
       available: true,
       version: info.version,
       releaseDate: info.releaseDate,
-      releaseNotes: typeof info.releaseNotes === 'string' 
-        ? info.releaseNotes 
-        : info.releaseNotes?.map(n => n.note).join('\n'),
+      releaseNotes:
+        typeof info.releaseNotes === 'string'
+          ? info.releaseNotes
+          : info.releaseNotes?.map((n) => n.note).join('\n'),
       downloading: false,
       progress: 0
     }
@@ -255,6 +257,13 @@ function createWindow(): void {
     mainWindow?.show()
   })
 
+  mainWindow.on('close', (event) => {
+    if (!allowClose) {
+      event.preventDefault()
+      mainWindow?.webContents.send('prepare-close')
+    }
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -272,11 +281,11 @@ ipcMain.handle('get-backend-port', async () => {
   // 等待后端就绪，最多等待 30 秒
   const timeout = 30000
   const startTime = Date.now()
-  
+
   while (!backendPort && Date.now() - startTime < timeout) {
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100))
   }
-  
+
   return backendPort
 })
 
@@ -286,7 +295,7 @@ ipcMain.on('subscribe-backend-logs', (event) => {
   if (win) {
     logSubscribers.add(win)
     // 发送历史日志
-    backendLogs.forEach(log => {
+    backendLogs.forEach((log) => {
       win.webContents.send('backend-log', log)
     })
   }
@@ -351,7 +360,15 @@ ipcMain.handle('window-maximize', (event) => {
 // IPC handler: 窗口关闭
 ipcMain.on('window-close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
-  win?.close()
+  if (win) {
+    win.webContents.send('prepare-close')
+  }
+})
+
+// IPC handler: 允许关闭窗口
+ipcMain.on('allow-close', () => {
+  allowClose = true
+  mainWindow?.close()
 })
 
 // IPC handler: 获取窗口最大化状态

@@ -130,8 +130,7 @@ onMounted(async () => {
   window.api.onUpdateError(handleUpdateError)
 })
 
-onUnmounted(() => {
-})
+onUnmounted(() => {})
 </script>
 
 <template>
@@ -175,12 +174,7 @@ onUnmounted(() => {
             class="h-12 px-6 rounded-xl font-medium"
             @click="checkForUpdates"
           >
-            <svg
-              v-if="checking"
-              class="mr-2 h-5 w-5 animate-spin"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
+            <svg v-if="checking" class="mr-2 h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle
                 class="opacity-25"
                 cx="12"
@@ -271,13 +265,13 @@ onUnmounted(() => {
       >
         <DialogHeader>
           <DialogTitle class="text-xl">发现新版本</DialogTitle>
-          <DialogDescription class="text-base">
-            有新版本可供下载安装
-          </DialogDescription>
+          <DialogDescription class="text-base"> 有新版本可供下载安装 </DialogDescription>
         </DialogHeader>
 
         <div class="space-y-4 py-4">
-          <div class="flex items-center justify-between rounded-xl bg-zinc-100 dark:bg-zinc-800 p-4">
+          <div
+            class="flex items-center justify-between rounded-xl bg-zinc-100 dark:bg-zinc-800 p-4"
+          >
             <div>
               <p class="text-sm text-zinc-500 dark:text-zinc-400">新版本</p>
               <p class="text-xl font-bold text-violet-600 dark:text-violet-400">
@@ -325,11 +319,7 @@ onUnmounted(() => {
         </div>
 
         <DialogFooter class="gap-2 sm:gap-0">
-          <Button
-            variant="outline"
-            class="rounded-xl"
-            @click="showUpdateDialog = false"
-          >
+          <Button variant="outline" class="rounded-xl" @click="showUpdateDialog = false">
             稍后提醒
           </Button>
           <Button
@@ -346,13 +336,7 @@ onUnmounted(() => {
           >
             立即安装
           </Button>
-          <Button
-            v-else
-            disabled
-            class="rounded-xl"
-          >
-            下载中...
-          </Button>
+          <Button v-else disabled class="rounded-xl"> 下载中... </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

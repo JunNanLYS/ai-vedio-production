@@ -4,12 +4,12 @@ async function getBackendUrl(): Promise<string> {
   if (backendUrl) {
     return backendUrl
   }
-  
+
   const port = await window.api.getBackendPort()
   if (!port) {
     throw new Error('无法获取后端端口')
   }
-  
+
   backendUrl = `http://127.0.0.1:${port}`
   return backendUrl
 }
@@ -24,7 +24,7 @@ function getBackendUrlSync(): string | null {
 
 async function request<T>(endpoint: string, options?: RequestInit, retries = 2): Promise<T> {
   const url = await getBackendUrl()
-  
+
   try {
     const response = await fetch(`${url}${endpoint}`, {
       headers: {
@@ -42,7 +42,7 @@ async function request<T>(endpoint: string, options?: RequestInit, retries = 2):
   } catch (err) {
     if (retries > 0 && err instanceof TypeError) {
       console.warn('[API] 连接失败，重试中...')
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise((resolve) => setTimeout(resolve, 500))
       return request<T>(endpoint, options, retries - 1)
     }
     throw err

@@ -82,6 +82,39 @@ def get_canvas_list(
     ]
 
 
+@router.get("/canvas/default-project")
+def get_default_canvas_project(
+    session: Session = Depends(get_session)
+) -> dict:
+    """获取默认画布保存项目"""
+    project_id = get_current_project_id()
+    
+    if project_id:
+        project = session.get(Project, project_id)
+        if project:
+            return {"project_id": project_id, "project_name": project.name}
+    
+    return {"project_id": None, "project_name": None}
+
+
+@router.post("/canvas/set-default-project/{project_id}")
+def set_default_canvas_project(
+    project_id: int,
+    session: Session = Depends(get_session)
+) -> dict:
+    """设置默认画布保存项目"""
+    project = session.get(Project, project_id)
+    
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    
+    CURRENT_PROJECT_FILE = Path(__file__).parent.parent / "current_project.txt"
+    CURRENT_PROJECT_FILE.write_text(str(project_id))
+    
+    logger.info(f"设置默认画布项目: {project.name}")
+    return {"message": "设置成功", "project_id": project_id, "project_name": project.name}
+
+
 @router.post("/canvas")
 def save_canvas(
     data: CanvasSaveRequest,
@@ -307,36 +340,3 @@ def delete_canvas(
     
     logger.info(f"删除画布: {canvas.name}")
     return {"message": "画布已删除"}
-
-
-@router.get("/canvas/default-project")
-def get_default_canvas_project(
-    session: Session = Depends(get_session)
-) -> dict:
-    """获取默认画布保存项目"""
-    project_id = get_current_project_id()
-    
-    if project_id:
-        project = session.get(Project, project_id)
-        if project:
-            return {"project_id": project_id, "project_name": project.name}
-    
-    return {"project_id": None, "project_name": None}
-
-
-@router.post("/canvas/set-default-project/{project_id}")
-def set_default_canvas_project(
-    project_id: int,
-    session: Session = Depends(get_session)
-) -> dict:
-    """设置默认画布保存项目"""
-    project = session.get(Project, project_id)
-    
-    if not project:
-        raise HTTPException(status_code=404, detail="项目不存在")
-    
-    CURRENT_PROJECT_FILE = Path(__file__).parent.parent / "current_project.txt"
-    CURRENT_PROJECT_FILE.write_text(str(project_id))
-    
-    logger.info(f"设置默认画布项目: {project.name}")
-    return {"message": "设置成功", "project_id": project_id, "project_name": project.name}

@@ -37,6 +37,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '连通测试' }
   },
   {
+    path: '/settings',
+    name: 'Settings',
+    component: () => import('../views/SettingsView.vue'),
+    meta: { title: '设置' }
+  },
+  {
     path: '/update',
     name: 'Update',
     component: () => import('../views/UpdateView.vue'),

@@ -104,11 +104,7 @@ const handleDelete = (project: Project, event: Event): void => {
       </div>
     </Transition>
 
-    <div
-      v-if="isOpen"
-      class="fixed inset-0 z-40"
-      @click="isOpen = false"
-    />
+    <div v-if="isOpen" class="fixed inset-0 z-40" @click="isOpen = false" />
   </div>
 </template>
 

@@ -39,17 +39,17 @@ const handleApply = () => {
       <p class="text-zinc-500 dark:text-zinc-400 mb-4">该订单暂无工作流，请选择一个模板应用</p>
     </div>
 
-    <div
-      v-if="loading"
-      class="flex flex-col items-center justify-center py-8 gap-4"
-    >
+    <div v-if="loading" class="flex flex-col items-center justify-center py-8 gap-4">
       <div
         class="w-8 h-8 border-2 border-zinc-200 dark:border-zinc-700 border-t-zinc-900 dark:border-t-white rounded-full animate-spin"
       ></div>
       <span class="text-zinc-500 dark:text-zinc-400">加载模板...</span>
     </div>
 
-    <div v-else-if="workflows.length === 0" class="text-center py-8 text-zinc-500 dark:text-zinc-400">
+    <div
+      v-else-if="workflows.length === 0"
+      class="text-center py-8 text-zinc-500 dark:text-zinc-400"
+    >
       暂无可用模板，请先创建工作流模板
     </div>
 
@@ -73,7 +73,14 @@ const handleApply = () => {
               class="w-5 h-5 rounded-full bg-zinc-900 dark:bg-white flex items-center justify-center"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6L5 9L10 3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="dark:stroke-zinc-900"/>
+                <path
+                  d="M2 6L5 9L10 3"
+                  stroke="white"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="dark:stroke-zinc-900"
+                />
               </svg>
             </div>
           </div>

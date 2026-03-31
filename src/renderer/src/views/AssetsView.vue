@@ -62,7 +62,7 @@ const loadAssets = async (): Promise<void> => {
     assets.value = []
     return
   }
-  
+
   loading.value = true
   try {
     const data = await assetsService.getAll()
@@ -113,11 +113,11 @@ const handleLoadProject = async (path: string): Promise<void> => {
 
 const handleProjectDelete = async (project: Project): Promise<void> => {
   if (!confirm(`确定要删除项目"${project.name}"吗？这将删除该项目的所有资产文件。`)) return
-  
+
   try {
     await assetsService.deleteProject(project.id)
-    projects.value = projects.value.filter(p => p.id !== project.id)
-    
+    projects.value = projects.value.filter((p) => p.id !== project.id)
+
     if (currentProject.value?.id === project.id) {
       currentProject.value = null
       assets.value = []
@@ -169,16 +169,20 @@ const handleAssetDelete = async (id: number): Promise<void> => {
 }
 
 const handleAssetRename = (id: number, newName: string): void => {
-  const asset = assets.value.find(a => a.id === id)
+  const asset = assets.value.find((a) => a.id === id)
   if (asset) {
     const ext = asset.name.split('.').pop()
     asset.name = `${newName}.${ext}`
   }
 }
 
-const handleUpload = async (file: File, category: string, subCategoryName: string): Promise<void> => {
+const handleUpload = async (
+  file: File,
+  category: string,
+  subCategoryName: string
+): Promise<void> => {
   const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-  
+
   const tempAsset: Asset = {
     id: -1,
     name: file.name,
@@ -191,13 +195,13 @@ const handleUpload = async (file: File, category: string, subCategoryName: strin
     uploading: true,
     tempId: tempId
   }
-  
+
   assets.value.unshift(tempAsset)
   showUploadDialog.value = false
-  
+
   try {
     const uploadResult = await assetsService.upload(file, category, subCategoryName)
-    
+
     const newAsset = await assetsService.create({
       name: file.name,
       category: category as 'prompt' | 'image' | 'audio' | 'video' | 'document',
@@ -205,16 +209,16 @@ const handleUpload = async (file: File, category: string, subCategoryName: strin
       file_path: uploadResult.file_path,
       file_type: file.name.split('.').pop() || ''
     })
-    
-    const tempIndex = assets.value.findIndex(a => a.tempId === tempId)
+
+    const tempIndex = assets.value.findIndex((a) => a.tempId === tempId)
     if (tempIndex !== -1) {
       assets.value[tempIndex] = newAsset
     }
-    
+
     categoryTreeRef.value?.loadSubCategories()
   } catch (error) {
     console.error('上传资产失败:', error)
-    assets.value = assets.value.filter(a => a.tempId !== tempId)
+    assets.value = assets.value.filter((a) => a.tempId !== tempId)
   }
 }
 
@@ -254,12 +258,7 @@ onMounted(async () => {
           @create="handleProjectCreate"
           @delete="handleProjectDelete"
         />
-        <Button
-          variant="outline"
-          size="sm"
-          @click="handleProjectLoad"
-          class="rounded-xl gap-2"
-        >
+        <Button variant="outline" size="sm" @click="handleProjectLoad" class="rounded-xl gap-2">
           <FolderSearch :size="16" />
           加载项目
         </Button>
@@ -277,9 +276,13 @@ onMounted(async () => {
     </div>
 
     <div v-if="!hasProject" class="flex items-center justify-center min-h-[calc(100vh-280px)]">
-      <Card class="w-full max-w-md backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5">
+      <Card
+        class="w-full max-w-md backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5"
+      >
         <CardContent class="p-8 text-center">
-          <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+          <div
+            class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center"
+          >
             <AlertCircle :size="32" class="text-zinc-400" />
           </div>
           <h3 class="text-lg font-medium text-zinc-800 dark:text-zinc-200 mb-2">暂无选中项目</h3>
@@ -292,11 +295,7 @@ onMounted(async () => {
           >
             创建新项目
           </Button>
-          <Button
-            variant="outline"
-            @click="handleProjectLoad"
-            class="rounded-xl gap-2"
-          >
+          <Button variant="outline" @click="handleProjectLoad" class="rounded-xl gap-2">
             <FolderSearch :size="16" />
             加载项目
           </Button>
@@ -305,7 +304,9 @@ onMounted(async () => {
     </div>
 
     <div v-else class="flex gap-6 min-h-[calc(100vh-220px)]">
-      <Card class="w-56 shrink-0 backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5">
+      <Card
+        class="w-56 shrink-0 backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5"
+      >
         <CardContent class="p-4">
           <CategoryTree
             ref="categoryTreeRef"
@@ -316,7 +317,9 @@ onMounted(async () => {
         </CardContent>
       </Card>
 
-      <Card class="flex-1 backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5 flex flex-col">
+      <Card
+        class="flex-1 backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5 flex flex-col"
+      >
         <CardContent class="p-0 flex-1 flex flex-col">
           <div class="flex-1 overflow-auto">
             <AssetList

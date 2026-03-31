@@ -41,8 +41,12 @@ const api = {
   windowMaximize: (): Promise<boolean> => ipcRenderer.invoke('window-maximize'),
   windowClose: (): void => ipcRenderer.send('window-close'),
   windowIsMaximized: (): Promise<boolean> => ipcRenderer.invoke('window-is-maximized'),
+  allowClose: (): void => ipcRenderer.send('allow-close'),
+  onPrepareClose: (callback: () => void) => {
+    ipcRenderer.on('prepare-close', () => callback())
+  },
 
-  checkForUpdates: (silent: boolean = false): Promise<void> => 
+  checkForUpdates: (silent: boolean = false): Promise<void> =>
     ipcRenderer.invoke('check-for-updates', silent),
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke('download-update'),
   quitAndInstall: (): Promise<void> => ipcRenderer.invoke('quit-and-install'),

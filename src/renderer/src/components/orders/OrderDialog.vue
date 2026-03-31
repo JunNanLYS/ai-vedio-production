@@ -197,7 +197,11 @@ const selectedWorkflowIdString = computed({
               <SelectValue placeholder="选择工作流模板" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem v-for="workflow in workflows" :key="workflow.id" :value="workflow.id.toString()">
+              <SelectItem
+                v-for="workflow in workflows"
+                :key="workflow.id"
+                :value="workflow.id.toString()"
+              >
                 {{ workflow.name }}
               </SelectItem>
             </SelectContent>
@@ -212,7 +216,11 @@ const selectedWorkflowIdString = computed({
               <SelectValue placeholder="选择状态" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem v-for="option in STATUS_OPTIONS" :key="option.value" :value="option.value">
+              <SelectItem
+                v-for="option in STATUS_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+              >
                 {{ option.label }}
               </SelectItem>
             </SelectContent>

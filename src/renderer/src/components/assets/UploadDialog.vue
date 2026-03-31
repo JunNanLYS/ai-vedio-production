@@ -34,7 +34,7 @@ const isCategoryOpen = ref(false)
 const isSubCategoryOpen = ref(false)
 
 const availableSubCategories = computed(() => {
-  return subCategories.value.filter(sub => sub.category === selectedCategory.value)
+  return subCategories.value.filter((sub) => sub.category === selectedCategory.value)
 })
 
 watch(selectedCategory, async (newCategory) => {
@@ -112,11 +112,11 @@ const canUpload = computed(() => {
 })
 
 const getCategoryName = (id: string): string => {
-  return categories.find(c => c.id === id)?.name || id
+  return categories.find((c) => c.id === id)?.name || id
 }
 
 const getSubCategoryName = (id: string): string => {
-  return subCategories.value.find(s => s.id.toString() === id)?.name || id
+  return subCategories.value.find((s) => s.id.toString() === id)?.name || id
 }
 </script>
 
@@ -207,12 +207,16 @@ const getSubCategoryName = (id: string): string => {
                       )
                     "
                   >
-                    <span :class="selectedCategory ? 'text-zinc-700 dark:text-zinc-300' : 'text-zinc-400'">
+                    <span
+                      :class="
+                        selectedCategory ? 'text-zinc-700 dark:text-zinc-300' : 'text-zinc-400'
+                      "
+                    >
                       {{ selectedCategory ? getCategoryName(selectedCategory) : '选择分类' }}
                     </span>
                     <ChevronDown :size="16" class="text-zinc-400" />
                   </button>
-                  
+
                   <Transition name="dropdown">
                     <div
                       v-if="isCategoryOpen"
@@ -221,11 +225,14 @@ const getSubCategoryName = (id: string): string => {
                       <button
                         v-for="category in categories"
                         :key="category.id"
-                        @click="selectedCategory = category.id; isCategoryOpen = false"
+                        @click="
+                          (selectedCategory = category.id), (isCategoryOpen = false)
+                        "
                         :class="
                           cn(
                             'w-full px-3 py-2.5 text-left text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700/50 transition-colors',
-                            selectedCategory === category.id && 'bg-zinc-50 dark:bg-zinc-700/50 text-zinc-900 dark:text-white'
+                            selectedCategory === category.id &&
+                              'bg-zinc-50 dark:bg-zinc-700/50 text-zinc-900 dark:text-white'
                           )
                         "
                       >
@@ -259,12 +266,18 @@ const getSubCategoryName = (id: string): string => {
                       )
                     "
                   >
-                    <span :class="selectedSubCategory ? 'text-zinc-700 dark:text-zinc-300' : 'text-zinc-400'">
-                      {{ selectedSubCategory ? getSubCategoryName(selectedSubCategory) : '选择子分类' }}
+                    <span
+                      :class="
+                        selectedSubCategory ? 'text-zinc-700 dark:text-zinc-300' : 'text-zinc-400'
+                      "
+                    >
+                      {{
+                        selectedSubCategory ? getSubCategoryName(selectedSubCategory) : '选择子分类'
+                      }}
                     </span>
                     <ChevronDown :size="16" class="text-zinc-400" />
                   </button>
-                  
+
                   <Transition name="dropdown">
                     <div
                       v-if="isSubCategoryOpen && availableSubCategories.length > 0"
@@ -273,11 +286,14 @@ const getSubCategoryName = (id: string): string => {
                       <button
                         v-for="sub in availableSubCategories"
                         :key="sub.id"
-                        @click="selectedSubCategory = sub.id.toString(); isSubCategoryOpen = false"
+                        @click="
+                          (selectedSubCategory = sub.id.toString()), (isSubCategoryOpen = false)
+                        "
                         :class="
                           cn(
                             'w-full px-3 py-2.5 text-left text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700/50 transition-colors',
-                            selectedSubCategory === sub.id.toString() && 'bg-zinc-50 dark:bg-zinc-700/50 text-zinc-900 dark:text-white'
+                            selectedSubCategory === sub.id.toString() &&
+                              'bg-zinc-50 dark:bg-zinc-700/50 text-zinc-900 dark:text-white'
                           )
                         "
                       >

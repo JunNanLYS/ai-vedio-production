@@ -60,9 +60,7 @@ def migrate_database():
 
 
 def create_db_and_tables():
-    """创建数据库和所有表"""
-    from models import Order, Workflow, Product, Asset, Project, SubCategory, CanvasAsset
-    
+    """创建数据库和所有表"""    
     migrate_database()
     
     SQLModel.metadata.create_all(engine)

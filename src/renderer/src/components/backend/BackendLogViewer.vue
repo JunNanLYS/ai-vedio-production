@@ -18,13 +18,13 @@ const logCount = computed(() => logs.value.length)
 function formatLog(log: string): { type: string; content: string; timestamp: string } {
   const stdoutMatch = log.match(/\[([^\]]+)\] \[STDOUT\] (.+)/)
   const stderrMatch = log.match(/\[([^\]]+)\] \[STDERR\] (.+)/)
-  
+
   if (stdoutMatch) {
     return { type: 'stdout', timestamp: stdoutMatch[1], content: stdoutMatch[2] }
   } else if (stderrMatch) {
     return { type: 'stderr', timestamp: stderrMatch[1], content: stderrMatch[2] }
   }
-  
+
   return { type: 'unknown', timestamp: '', content: log }
 }
 
@@ -63,7 +63,7 @@ onMounted(async () => {
   const historyLogs = await window.api.getBackendLogs()
   logs.value = historyLogs
   scrollToBottom()
-  
+
   unsubscribe = window.api.subscribeBackendLogs((log: string) => {
     logs.value.push(log)
     if (logs.value.length > 1000) {
@@ -87,12 +87,7 @@ onUnmounted(() => {
     <CardHeader class="pb-3">
       <div class="flex items-center justify-between">
         <CardTitle class="text-lg flex items-center gap-2">
-          <svg
-            class="h-5 w-5 text-zinc-500"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
+          <svg class="h-5 w-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -127,7 +122,12 @@ onUnmounted(() => {
             </svg>
           </Button>
           <Button variant="ghost" size="sm" class="h-8 px-2" @click="clearLogs">
-            <svg class="h-4 w-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              class="h-4 w-4 text-zinc-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -144,7 +144,12 @@ onUnmounted(() => {
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </Button>
         </div>
@@ -155,9 +160,7 @@ onUnmounted(() => {
         ref="logContainer"
         class="h-64 overflow-y-auto rounded-xl bg-zinc-900 dark:bg-zinc-950 p-3 font-mono text-xs"
       >
-        <div v-if="filteredLogs.length === 0" class="text-zinc-500 text-center py-4">
-          暂无日志
-        </div>
+        <div v-if="filteredLogs.length === 0" class="text-zinc-500 text-center py-4">暂无日志</div>
         <div
           v-for="(log, index) in filteredLogs"
           :key="index"

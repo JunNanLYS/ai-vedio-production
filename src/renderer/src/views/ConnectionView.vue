@@ -206,7 +206,9 @@ onMounted(async () => {
               {{ backendUrl || '获取中...' }}
             </p>
           </div>
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-zinc-800">
+          <div
+            class="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-zinc-800"
+          >
             <svg
               class="h-6 w-6 text-zinc-600 dark:text-zinc-400"
               fill="none"
@@ -258,7 +260,9 @@ onMounted(async () => {
         <div class="space-y-4">
           <div v-if="responseTime !== null" class="flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/30">
+              <div
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/30"
+              >
                 <svg
                   class="h-5 w-5 text-emerald-600 dark:text-emerald-400"
                   fill="none"
@@ -275,7 +279,9 @@ onMounted(async () => {
               </div>
               <div>
                 <p class="text-sm font-medium text-zinc-500 dark:text-zinc-400">响应时间</p>
-                <p class="font-mono text-lg font-semibold text-zinc-900 dark:text-zinc-100">{{ responseTime }}ms</p>
+                <p class="font-mono text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                  {{ responseTime }}ms
+                </p>
               </div>
             </div>
             <span
@@ -294,7 +300,9 @@ onMounted(async () => {
 
           <div v-if="status === 'connected'" class="flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/30">
+              <div
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/30"
+              >
                 <svg
                   class="h-5 w-5 text-sky-600 dark:text-sky-400"
                   fill="none"
@@ -314,13 +322,17 @@ onMounted(async () => {
                 <p class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">OK</p>
               </div>
             </div>
-            <span class="rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-3 py-1 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <span
+              class="rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-3 py-1 text-sm font-medium text-emerald-700 dark:text-emerald-400"
+            >
               正常
             </span>
           </div>
 
           <div v-if="errorMessage" class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-900/30">
+            <div
+              class="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-900/30"
+            >
               <svg
                 class="h-5 w-5 text-rose-600 dark:text-rose-400"
                 fill="none"
@@ -337,11 +349,16 @@ onMounted(async () => {
             </div>
             <div>
               <p class="text-sm font-medium text-zinc-500 dark:text-zinc-400">错误信息</p>
-              <p class="text-lg font-semibold text-rose-600 dark:text-rose-400">{{ errorMessage }}</p>
+              <p class="text-lg font-semibold text-rose-600 dark:text-rose-400">
+                {{ errorMessage }}
+              </p>
             </div>
           </div>
 
-          <div v-if="lastCheckTime" class="border-t border-zinc-200/50 dark:border-zinc-800/50 pt-4">
+          <div
+            v-if="lastCheckTime"
+            class="border-t border-zinc-200/50 dark:border-zinc-800/50 pt-4"
+          >
             <p class="text-center text-sm text-zinc-400 dark:text-zinc-500">
               最后检测: {{ lastCheckTime.toLocaleTimeString('zh-CN') }}
             </p>

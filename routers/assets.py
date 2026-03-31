@@ -471,6 +471,16 @@ def get_assets(
     return assets
 
 
+@router.get("/assets/{asset_id}")
+def get_asset(asset_id: int, session: Session = Depends(get_session)) -> Asset:
+    """获取单个资产"""
+    statement = select(Asset).where(Asset.id == asset_id)
+    asset = session.exec(statement).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="资产不存在")
+    return asset
+
+
 @router.post("/assets")
 def create_asset(
     asset_data: AssetCreate,
@@ -760,6 +770,78 @@ def get_asset_preview(asset_id: int, session: Session = Depends(get_session)) ->
         media_type="image/jpeg",
         filename=f"{asset.name}_preview.jpg"
     )
+
+
+class MoveAssetRequest(BaseModel):
+    """移动资产请求"""
+    target_project_id: int
+    target_category: str
+    target_sub_category: str
+
+
+@router.post("/assets/{asset_id}/move")
+def move_asset(
+    asset_id: int,
+    data: MoveAssetRequest,
+    session: Session = Depends(get_session)
+) -> Asset:
+    """移动资产到新的项目/分类/子分类"""
+    statement = select(Asset).where(Asset.id == asset_id)
+    asset = session.exec(statement).first()
+    
+    if not asset:
+        raise HTTPException(status_code=404, detail="资产不存在")
+    
+    source_project_id = asset.project_id
+    source_project_statement = select(Project).where(Project.id == source_project_id)
+    source_project = session.exec(source_project_statement).first()
+    
+    target_project_statement = select(Project).where(Project.id == data.target_project_id)
+    target_project = session.exec(target_project_statement).first()
+    
+    if not target_project:
+        raise HTTPException(status_code=404, detail="目标项目不存在")
+    
+    if data.target_category not in CATEGORY_DIRS:
+        raise HTTPException(status_code=400, detail=f"无效的资产类别，允许的类别: {list(CATEGORY_DIRS.keys())}")
+    
+    source_file_path = Path(asset.file_path)
+    if source_project and not source_file_path.is_absolute():
+        source_file_path = Path(source_project.path) / asset.file_path
+    
+    if not source_file_path.exists():
+        raise HTTPException(status_code=404, detail=f"源文件不存在: {source_file_path}")
+    
+    target_category_dir = CATEGORY_DIRS[data.target_category]
+    target_dir = Path(target_project.path) / target_category_dir / data.target_sub_category
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    target_file_path = target_dir / source_file_path.name
+    
+    if target_file_path.exists() and target_file_path != source_file_path:
+        base_name = source_file_path.stem
+        ext = source_file_path.suffix
+        counter = 1
+        while target_file_path.exists():
+            target_file_path = target_dir / f"{base_name}_{counter}{ext}"
+            counter += 1
+    
+    shutil.move(str(source_file_path), str(target_file_path))
+    
+    relative_path = str(target_file_path.relative_to(Path(target_project.path)))
+    
+    asset.project_id = target_project.id
+    asset.category = data.target_category
+    asset.sub_category = data.target_sub_category
+    asset.file_path = relative_path
+    asset.file_type = target_file_path.suffix.lstrip(".")
+    
+    session.add(asset)
+    session.commit()
+    session.refresh(asset)
+    
+    logger.info(f"移动资产: {source_file_path} -> {target_file_path}")
+    return asset
 
 
 # ==================== 兼容旧API ====================

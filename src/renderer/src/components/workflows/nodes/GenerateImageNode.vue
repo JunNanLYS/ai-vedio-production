@@ -32,6 +32,8 @@ const emit = defineEmits<{
   resize: [{ width: number; height: number; x?: number; y?: number }]
   update: [updates: Partial<CanvasNode>]
   generate: []
+  contextmenu: [event: MouseEvent]
+  mousedown: [event: MouseEvent]
 }>()
 
 const MIN_WIDTH = 280
@@ -77,8 +79,6 @@ const OUTPUT_FORMAT_OPTIONS: { value: ImageOutputFormat; label: string }[] = [
 const promptTemplates = ref<Asset[]>([])
 const showTemplatePicker = ref(false)
 const loadingTemplates = ref(false)
-const isGenerating = ref(false)
-const generatedImages = ref<string[]>([])
 const showLimitWarning = ref(false)
 const limitWarningMessage = ref('')
 
@@ -153,8 +153,8 @@ const showWarning = (message: string) => {
   }, 3000)
 }
 
-const handleGenerate = async () => {
-  if (isGenerating.value) return
+const handleGenerate = () => {
+  if ((props.node as any).isGenerating) return
 
   if (isPromptOverLimit.value) {
     showWarning(`提示词超出限制（${promptLength.value}/${MAX_PROMPT_LENGTH}字符）`)
@@ -171,14 +171,12 @@ const handleGenerate = async () => {
     return
   }
 
-  isGenerating.value = true
-  try {
-    emit('generate')
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    generatedImages.value.push(`generated-${Date.now()}.png`)
-  } finally {
-    isGenerating.value = false
+  if (!props.node.prompt || !props.node.prompt.trim()) {
+    showWarning('请输入提示词')
+    return
   }
+
+  emit('generate')
 }
 
 const resizeState = ref<{
@@ -280,12 +278,14 @@ onMounted(() => {
 
 <template>
   <div
-    class="absolute rounded-xl border-2 cursor-move transition-shadow duration-200 overflow-visible group"
+    class="absolute rounded-xl border-2 cursor-move transition-shadow duration-200 overflow-visible pointer-events-auto group"
     :class="[
       'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700',
       selected ? 'ring-2 ring-blue-500 ring-offset-2 shadow-lg' : 'shadow-md hover:shadow-lg'
     ]"
     :style="nodeStyle"
+    @contextmenu="emit('contextmenu', $event)"
+    @mousedown="emit('mousedown', $event)"
   >
     <div class="flex flex-col h-full">
       <div
@@ -328,13 +328,15 @@ onMounted(() => {
           <textarea
             :value="node.prompt || ''"
             placeholder="输入提示词..."
-            class="w-full h-full text-sm bg-white dark:bg-zinc-800 border rounded-lg p-2 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+            class="w-full h-full text-sm bg-white dark:bg-zinc-800 border rounded-lg p-2 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 select-text"
             :class="
               isPromptOverLimit
                 ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
                 : 'border-zinc-200 dark:border-zinc-700'
             "
             @input="handlePromptInput"
+            @mousedown.stop
+            @wheel.stop
           ></textarea>
           <div
             class="absolute bottom-1 right-1 text-[10px] px-1 rounded"
@@ -456,6 +458,8 @@ onMounted(() => {
               <div
                 v-if="showTemplatePicker"
                 class="absolute bottom-full left-0 mb-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-xl max-h-60 overflow-y-auto z-50 min-w-[220px]"
+                @mousedown.stop
+                @wheel.stop
               >
                 <div v-if="loadingTemplates" class="p-3 text-center text-sm text-zinc-500">
                   加载中...
@@ -477,11 +481,11 @@ onMounted(() => {
 
           <button
             class="flex-1 text-xs bg-purple-500 hover:bg-purple-600 disabled:bg-purple-300 dark:disabled:bg-purple-800 text-white rounded-lg py-1.5 px-2 transition-colors flex items-center justify-center gap-1"
-            :disabled="isGenerating || isPromptOverLimit"
+            :disabled="(node as any).isGenerating || isPromptOverLimit"
             @click="handleGenerate"
           >
             <svg
-              v-if="isGenerating"
+              v-if="(node as any).isGenerating"
               width="12"
               height="12"
               viewBox="0 0 16 16"
@@ -509,7 +513,7 @@ onMounted(() => {
             >
               <path d="M8 2v12M2 8h12" />
             </svg>
-            {{ isGenerating ? '生成中...' : '生成' }}
+            {{ (node as any).isGenerating ? '生成中...' : '生成' }}
           </button>
         </div>
 
@@ -522,41 +526,6 @@ onMounted(() => {
             {{ limitWarningMessage }}
           </div>
         </Transition>
-
-        <!-- 生成结果 -->
-        <div
-          v-if="generatedImages.length > 0"
-          class="flex gap-1 flex-wrap border-t border-purple-200 dark:border-purple-800 pt-2"
-        >
-          <div
-            v-for="(img, index) in generatedImages"
-            :key="img"
-            class="relative w-12 h-12 rounded border border-purple-300 dark:border-purple-700 overflow-hidden bg-white dark:bg-zinc-800"
-          >
-            <div
-              class="w-full h-full bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-900 dark:to-purple-800 flex items-center justify-center"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                class="text-purple-500"
-              >
-                <rect x="2" y="2" width="12" height="12" rx="2" />
-                <circle cx="5.5" cy="5.5" r="1.5" />
-                <path d="M14 10L11 7L4 14" />
-              </svg>
-            </div>
-            <span
-              class="absolute bottom-0 right-0 bg-purple-500 text-white text-[10px] px-1 rounded-tl"
-            >
-              #{{ index + 1 }}
-            </span>
-          </div>
-        </div>
       </div>
     </div>
 

@@ -53,13 +53,17 @@ const canMoveNext = (product: Product) => {
             @move-next="emit('productMoveNext', product)"
           />
         </div>
-        <div v-else class="py-4 text-sm text-zinc-400 dark:text-zinc-500">
-          暂无产品
-        </div>
+        <div v-else class="py-4 text-sm text-zinc-400 dark:text-zinc-500">暂无产品</div>
       </div>
 
       <div v-if="index < steps.length - 1" class="flex justify-start pl-3 py-1">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="text-zinc-300 dark:text-zinc-600">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          class="text-zinc-300 dark:text-zinc-600"
+        >
           <path
             d="M12 5V19M12 19L6 13M12 19L18 13"
             stroke="currentColor"

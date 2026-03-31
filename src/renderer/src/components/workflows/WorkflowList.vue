@@ -30,10 +30,7 @@ const emit = defineEmits<{
       </Button>
     </div>
 
-    <div
-      v-if="loading"
-      class="flex flex-col items-center justify-center py-16 gap-4"
-    >
+    <div v-if="loading" class="flex flex-col items-center justify-center py-16 gap-4">
       <div
         class="w-8 h-8 border-2 border-zinc-200 dark:border-zinc-700 border-t-zinc-900 dark:border-t-white rounded-full animate-spin"
       ></div>
@@ -76,7 +73,9 @@ const emit = defineEmits<{
       >
         <CardContent class="p-5">
           <div class="flex items-start justify-between mb-2">
-            <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{{ workflow.name }}</h3>
+            <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+              {{ workflow.name }}
+            </h3>
             <div class="flex items-center gap-1">
               <Button
                 variant="ghost"

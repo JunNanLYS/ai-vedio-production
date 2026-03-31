@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
-import { LayoutDashboard, FileText, GitBranch, FolderOpen, Wifi, RefreshCw } from 'lucide-vue-next'
+import { LayoutDashboard, FileText, GitBranch, FolderOpen, Wifi, RefreshCw, Settings } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +18,7 @@ const navItems: NavItem[] = [
   { name: 'Workflows', path: '/workflows', icon: GitBranch, label: '工作流' },
   { name: 'Assets', path: '/assets', icon: FolderOpen, label: '资产管理' },
   { name: 'Connection', path: '/connection', icon: Wifi, label: '连通测试' },
+  { name: 'Settings', path: '/settings', icon: Settings, label: '设置' },
   { name: 'Update', path: '/update', icon: RefreshCw, label: '软件更新' }
 ]
 

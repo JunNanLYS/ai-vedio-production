@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from database import init_db
 from loguru import logger
-from routers import workflows_router, assets_router, dashboard_router, orders_router, canvas_router
+from routers import workflows_router, assets_router, dashboard_router, orders_router, canvas_router, settings_router, image_generation_router
 
 
 @asynccontextmanager
@@ -43,6 +43,8 @@ app.include_router(assets_router)
 app.include_router(dashboard_router)
 app.include_router(orders_router)
 app.include_router(canvas_router)
+app.include_router(settings_router)
+app.include_router(image_generation_router)
 
 
 @app.get("/status")

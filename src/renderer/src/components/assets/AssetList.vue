@@ -1,6 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { FileText, Image, Music, Video, File, Trash2, Pencil, ExternalLink, Check, X, Upload, FileSpreadsheet, Copy } from 'lucide-vue-next'
+import {
+  FileText,
+  Image,
+  Music,
+  Video,
+  File,
+  Trash2,
+  Pencil,
+  ExternalLink,
+  Check,
+  X,
+  Upload,
+  FileSpreadsheet,
+  Copy
+} from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import { assetsService } from '@/services/assets'
 import type { Asset } from '@/types'
@@ -27,34 +41,34 @@ const isDragging = ref(false)
 const subCategories = ref<{ id: number; name: string; category: string }[]>([])
 
 const fileExtensionToCategory: Record<string, string> = {
-  'txt': 'prompt',
-  'md': 'prompt',
-  'json': 'prompt',
-  'jpg': 'image',
-  'jpeg': 'image',
-  'png': 'image',
-  'gif': 'image',
-  'webp': 'image',
-  'bmp': 'image',
-  'svg': 'image',
-  'mp3': 'audio',
-  'wav': 'audio',
-  'ogg': 'audio',
-  'flac': 'audio',
-  'aac': 'audio',
-  'm4a': 'audio',
-  'mp4': 'video',
-  'avi': 'video',
-  'mov': 'video',
-  'mkv': 'video',
-  'webm': 'video',
-  'flv': 'video',
-  'wmv': 'video',
-  'ppt': 'document',
-  'pptx': 'document',
-  'doc': 'document',
-  'docx': 'document',
-  'pdf': 'document'
+  txt: 'prompt',
+  md: 'prompt',
+  json: 'prompt',
+  jpg: 'image',
+  jpeg: 'image',
+  png: 'image',
+  gif: 'image',
+  webp: 'image',
+  bmp: 'image',
+  svg: 'image',
+  mp3: 'audio',
+  wav: 'audio',
+  ogg: 'audio',
+  flac: 'audio',
+  aac: 'audio',
+  m4a: 'audio',
+  mp4: 'video',
+  avi: 'video',
+  mov: 'video',
+  mkv: 'video',
+  webm: 'video',
+  flv: 'video',
+  wmv: 'video',
+  ppt: 'document',
+  pptx: 'document',
+  doc: 'document',
+  docx: 'document',
+  pdf: 'document'
 }
 
 const getCategoryFromFile = (file: File): string => {
@@ -131,7 +145,7 @@ const confirmRename = async (asset: Asset): Promise<void> => {
     cancelRename()
     return
   }
-  
+
   try {
     await assetsService.rename(asset.id, newName.value.trim())
     emit('rename', asset.id, newName.value.trim())
@@ -147,7 +161,10 @@ const isSelected = (id: number): boolean => {
 }
 
 const loadPreviewUrl = async (asset: Asset): Promise<void> => {
-  if ((asset.category === 'image' || asset.category === 'video') && !previewUrls.value.has(asset.id)) {
+  if (
+    (asset.category === 'image' || asset.category === 'video') &&
+    !previewUrls.value.has(asset.id)
+  ) {
     try {
       const url = await assetsService.getPreviewUrl(asset.id)
       previewUrls.value.set(asset.id, url)
@@ -176,32 +193,32 @@ const handleDragLeave = (event: DragEvent): void => {
 const handleDrop = async (event: DragEvent): Promise<void> => {
   event.preventDefault()
   isDragging.value = false
-  
+
   if (!event.dataTransfer?.files || event.dataTransfer.files.length === 0) return
-  
+
   const files = Array.from(event.dataTransfer.files)
-  
+
   let category = props.currentCategory
   let subCategoryName = props.currentSubCategory || ''
-  
+
   if (!category) {
     const detectedCategories = new Set<string>()
-    files.forEach(file => {
+    files.forEach((file) => {
       detectedCategories.add(getCategoryFromFile(file))
     })
-    
+
     if (detectedCategories.size === 1) {
       category = Array.from(detectedCategories)[0]
     } else {
       category = getCategoryFromFile(files[0])
     }
   }
-  
+
   if (!subCategoryName) {
     try {
       const data = await assetsService.getSubCategories(category)
       subCategories.value = data
-      
+
       if (data.length > 0) {
         subCategoryName = data[0].name
       } else {
@@ -212,22 +229,26 @@ const handleDrop = async (event: DragEvent): Promise<void> => {
       subCategoryName = '默认'
     }
   }
-  
+
   for (const file of files) {
     emit('upload', file, category, subCategoryName)
   }
 }
 
-watch(() => props.assets, (newAssets) => {
-  newAssets.forEach(asset => {
-    if (asset.category === 'image' || asset.category === 'video') {
-      loadPreviewUrl(asset)
-    }
-  })
-}, { immediate: true })
+watch(
+  () => props.assets,
+  (newAssets) => {
+    newAssets.forEach((asset) => {
+      if (asset.category === 'image' || asset.category === 'video') {
+        loadPreviewUrl(asset)
+      }
+    })
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
-  props.assets.forEach(asset => {
+  props.assets.forEach((asset) => {
     if (asset.category === 'image' || asset.category === 'video') {
       loadPreviewUrl(asset)
     }
@@ -236,7 +257,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div 
+  <div
     class="asset-list h-full overflow-auto relative"
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
@@ -285,11 +306,16 @@ onMounted(() => {
               class="w-full h-full flex items-center justify-center bg-zinc-100 dark:bg-zinc-800"
             >
               <div class="relative">
-                <div class="animate-spin rounded-full h-10 w-10 border-2 border-zinc-200 dark:border-zinc-600 border-t-zinc-600 dark:border-t-zinc-300" />
+                <div
+                  class="animate-spin rounded-full h-10 w-10 border-2 border-zinc-200 dark:border-zinc-600 border-t-zinc-600 dark:border-t-zinc-300"
+                />
               </div>
             </div>
             <img
-              v-else-if="(asset.category === 'image' || asset.category === 'video') && previewUrls.get(asset.id)"
+              v-else-if="
+                (asset.category === 'image' || asset.category === 'video') &&
+                previewUrls.get(asset.id)
+              "
               :src="previewUrls.get(asset.id)"
               :alt="asset.name"
               class="w-full h-full object-cover"
@@ -424,7 +450,9 @@ onMounted(() => {
         class="absolute inset-0 z-10 flex items-center justify-center bg-zinc-50/90 dark:bg-zinc-900/90 backdrop-blur-sm rounded-2xl"
       >
         <div class="text-center">
-          <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
+          <div
+            class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center"
+          >
             <Upload :size="32" class="text-zinc-500 dark:text-zinc-400" />
           </div>
           <p class="text-sm font-medium text-zinc-700 dark:text-zinc-300">释放以上传文件</p>

@@ -22,13 +22,13 @@ const updateIndicator = async () => {
   await nextTick()
   const activeOption = optionRefs.value.get(props.modelValue)
   const container = containerRef.value
-  
+
   if (activeOption && container) {
     const containerRect = container.getBoundingClientRect()
     const optionRect = activeOption.getBoundingClientRect()
-    
+
     const offsetLeft = optionRect.left - containerRect.left
-    
+
     indicatorStyle.value = {
       width: `${optionRect.width}px`,
       transform: `translateX(${offsetLeft}px)`
@@ -50,13 +50,20 @@ onMounted(() => {
   updateIndicator()
 })
 
-watch(() => props.modelValue, () => {
-  updateIndicator()
-})
+watch(
+  () => props.modelValue,
+  () => {
+    updateIndicator()
+  }
+)
 
-watch(() => props.options, () => {
-  updateIndicator()
-}, { deep: true })
+watch(
+  () => props.options,
+  () => {
+    updateIndicator()
+  },
+  { deep: true }
+)
 </script>
 
 <template>

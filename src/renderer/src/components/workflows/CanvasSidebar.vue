@@ -32,8 +32,7 @@ const filteredAssets = computed(() => {
   if (!searchQuery.value) return assets.value
   const query = searchQuery.value.toLowerCase()
   return assets.value.filter(
-    (a) =>
-      a.name.toLowerCase().includes(query) || a.sub_category.toLowerCase().includes(query)
+    (a) => a.name.toLowerCase().includes(query) || a.sub_category.toLowerCase().includes(query)
   )
 })
 
@@ -151,7 +150,7 @@ onMounted(() => {
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">资产库</h3>
       </div>
-      
+
       <Select
         v-if="projects.length > 0"
         :model-value="currentProject?.id.toString()"
@@ -161,16 +160,12 @@ onMounted(() => {
           <SelectValue placeholder="选择项目" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem
-            v-for="project in projects"
-            :key="project.id"
-            :value="project.id.toString()"
-          >
+          <SelectItem v-for="project in projects" :key="project.id" :value="project.id.toString()">
             {{ project.name }}
           </SelectItem>
         </SelectContent>
       </Select>
-      
+
       <Input v-model="searchQuery" placeholder="搜索资产..." class="h-8 text-sm" />
     </div>
 
@@ -201,9 +196,7 @@ onMounted(() => {
           >
             <path :d="category.icon" />
           </svg>
-          <span
-            class="text-sm font-medium text-zinc-700 dark:text-zinc-300 flex-1 text-left"
-          >
+          <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300 flex-1 text-left">
             {{ category.label }}
           </span>
           <span class="text-xs text-zinc-400 dark:text-zinc-500 mr-2">
@@ -309,7 +302,12 @@ onMounted(() => {
               stroke-width="2"
               stroke-dasharray="4 2"
             />
-            <path d="M16 24H32M24 16V32" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path
+              d="M16 24H32M24 16V32"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
           </svg>
         </div>
         <p class="text-sm text-zinc-400 dark:text-zinc-600">暂无资产</p>

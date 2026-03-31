@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
+import { onBeforeRouteLeave } from 'vue-router'
 import { workflowsService } from '@/services/workflows'
 import { productsService } from '@/services/products'
 import { ordersService } from '@/services/orders'
 import { canvasService } from '@/services/canvas'
 import { assetsService } from '@/services/assets'
+import { imageGenerationService } from '@/services/imageGeneration'
 import type {
   Workflow,
   Order,
@@ -25,7 +28,7 @@ import InfiniteCanvas from '@/components/workflows/InfiniteCanvas.vue'
 import CanvasSidebar from '@/components/workflows/CanvasSidebar.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { InputDialog, ConfirmDialog, SaveCanvasDialog } from '@/components/ui/dialog'
+import { InputDialog, ConfirmDialog, NewCanvasDialog } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/toast/use-toast'
 import {
   Select,
@@ -65,22 +68,67 @@ const confirmDialogMessage = ref('')
 const confirmDialogVariant = ref<'default' | 'danger'>('default')
 const confirmDialogCallback = ref<(() => void) | null>(null)
 
-const saveCanvasDialogOpen = ref(false)
+const newCanvasDialogOpen = ref(false)
 
-const canvasNodes = ref<CanvasNode[]>([])
-const canvasConnections = ref<CanvasConnection[]>([])
+interface CanvasState {
+  nodes: CanvasNode[]
+  connections: CanvasConnection[]
+  viewport: { x: number; y: number; scale: number }
+  canvasId: number | null
+  canvasName: string | null
+  projectId: number | null
+  projectName: string | null
+}
+
+const savedCanvasState = useLocalStorage<CanvasState>('canvas-state', {
+  nodes: [],
+  connections: [],
+  viewport: { x: 0, y: 0, scale: 1 },
+  canvasId: null,
+  canvasName: null,
+  projectId: null,
+  projectName: null
+})
+
+const canvasNodes = ref<CanvasNode[]>(savedCanvasState.value.nodes)
+const canvasConnections = ref<CanvasConnection[]>(savedCanvasState.value.connections)
 const assetDrawerOpen = ref(false)
 
 const projects = ref<Project[]>([])
 const defaultCanvasProject = ref<{ project_id: number | null; project_name: string | null }>({
-  project_id: null,
-  project_name: null
+  project_id: savedCanvasState.value.projectId,
+  project_name: savedCanvasState.value.projectName
 })
-const currentCanvasName = ref<string | null>(null)
-const currentCanvasId = ref<number | null>(null)
-const canvasViewport = ref({ x: 0, y: 0, scale: 1 })
+const currentCanvasName = ref<string | null>(savedCanvasState.value.canvasName)
+const currentCanvasId = ref<number | null>(savedCanvasState.value.canvasId)
+const canvasViewport = ref(savedCanvasState.value.viewport)
 const canvasList = ref<CanvasAsset[]>([])
 const canvasListLoading = ref(false)
+
+const saveCanvasState = (): void => {
+  savedCanvasState.value = {
+    nodes: canvasNodes.value,
+    connections: canvasConnections.value,
+    viewport: canvasViewport.value,
+    canvasId: currentCanvasId.value,
+    canvasName: currentCanvasName.value,
+    projectId: defaultCanvasProject.value.project_id,
+    projectName: defaultCanvasProject.value.project_name
+  }
+}
+
+watch(
+  [
+    canvasNodes,
+    canvasConnections,
+    canvasViewport,
+    currentCanvasId,
+    currentCanvasName,
+    defaultCanvasProject
+  ],
+  saveCanvasState,
+  { deep: true }
+)
 
 const allProducts = computed(() => {
   if (!orderWorkflow.value?.steps_with_products) return []
@@ -471,6 +519,116 @@ const handleNodeDelete = (id: string): void => {
   )
 }
 
+const handleNodeDeleteWithConfirm = (node: CanvasNode): void => {
+  const getNodeName = (n: CanvasNode): string => {
+    if (n.name) return n.name
+    switch (n.type) {
+      case 'upload-image':
+        return '上传图片'
+      case 'generate-image':
+        return '生成图片'
+      case 'generated-image':
+        return '生成结果'
+      case 'text-annotation':
+        return '文本注释'
+      default:
+        return '节点'
+    }
+  }
+  
+  const nodeName = getNodeName(node)
+  
+  showConfirmDialog(
+    '删除节点',
+    `确定要删除节点"${nodeName}"吗？`,
+    () => {
+      handleNodeDelete(node.id)
+      toast({
+        title: '删除成功',
+        description: `节点"${nodeName}"已删除`
+      })
+    },
+    'danger'
+  )
+}
+
+const handleNodeOpenFile = async (node: CanvasNode): Promise<void> => {
+  try {
+    let absolutePath: string | undefined
+    
+    if (node.assetId) {
+      const result = await assetsService.getFilePath(node.assetId)
+      absolutePath = result.path
+    } else if (node.filePath) {
+      const isAbsolute = node.filePath.startsWith('/') || /^[A-Za-z]:/.test(node.filePath)
+      if (isAbsolute) {
+        absolutePath = node.filePath
+      } else {
+        const project = await assetsService.getCurrentProject()
+        if (project.project) {
+          absolutePath = `${project.project.path}/${node.filePath}`.replace(/\\/g, '/')
+        }
+      }
+    }
+    
+    if (!absolutePath) {
+      throw new Error('文件路径不存在')
+    }
+    
+    await window.api.openFile(absolutePath)
+  } catch (error: any) {
+    console.error('打开文件失败:', error)
+    toast({
+      title: '打开文件失败',
+      description: error.message || '未知错误',
+      variant: 'destructive'
+    })
+  }
+}
+
+const handleNodeOpenFolder = async (node: CanvasNode): Promise<void> => {
+  try {
+    let absolutePath: string | undefined
+    
+    if (node.assetId) {
+      const result = await assetsService.getFilePath(node.assetId)
+      absolutePath = result.path
+    } else if (node.filePath) {
+      const isAbsolute = node.filePath.startsWith('/') || /^[A-Za-z]:/.test(node.filePath)
+      if (isAbsolute) {
+        absolutePath = node.filePath
+      } else {
+        const project = await assetsService.getCurrentProject()
+        if (project.project) {
+          absolutePath = `${project.project.path}/${node.filePath}`.replace(/\\/g, '/')
+        }
+      }
+    }
+    
+    if (!absolutePath) {
+      throw new Error('文件路径不存在')
+    }
+    
+    const path = absolutePath.replace(/\\/g, '/')
+    const lastSlashIndex = path.lastIndexOf('/')
+    const dirPath = lastSlashIndex >= 0 ? path.substring(0, lastSlashIndex) : '.'
+    
+    await window.api.openDirectory(dirPath)
+    
+    toast({
+      title: '打开目录成功',
+      description: `已打开文件所在目录`
+    })
+  } catch (error: any) {
+    console.error('打开目录失败:', error)
+    toast({
+      title: '打开目录失败',
+      description: error.message || '未知错误',
+      variant: 'destructive'
+    })
+  }
+}
+
 const handleNodesDelete = (ids: string[]): void => {
   canvasNodes.value = canvasNodes.value.filter((n) => !ids.includes(n.id))
   canvasConnections.value = canvasConnections.value.filter(
@@ -478,10 +636,249 @@ const handleNodesDelete = (ids: string[]): void => {
   )
 }
 
-const handleNodeGenerate = (id: string): void => {
+const handleNodeGenerate = async (id: string): Promise<void> => {
   const node = canvasNodes.value.find((n) => n.id === id)
-  if (node && node.type === 'generate-image') {
-    console.log('生成图片:', node.prompt)
+  if (!node || node.type !== 'generate-image') {
+    return
+  }
+
+  if (!node.prompt || !node.prompt.trim()) {
+    toast({
+      title: '请输入提示词',
+      description: '生成图片需要输入提示词',
+      variant: 'destructive'
+    })
+    return
+  }
+
+  const referenceConnections = canvasConnections.value.filter(
+    (c) => c.targetId === id && c.type === 'reference'
+  )
+
+  const imageInput: string[] = []
+  for (const conn of referenceConnections) {
+    const sourceNode = canvasNodes.value.find((n) => n.id === conn.sourceId)
+    if (sourceNode?.assetId) {
+      try {
+        toast({
+          title: '上传参考图片',
+          description: '正在上传原图到服务器...'
+        })
+        const uploadResult = await imageGenerationService.uploadImage('', sourceNode.assetId)
+        imageInput.push(uploadResult.file_url)
+        toast({
+          title: '参考图片上传成功',
+          description: `已上传: ${uploadResult.file_name}`
+        })
+      } catch (error: any) {
+        toast({
+          title: '上传参考图片失败',
+          description: error.response?.data?.detail || error.message || '未知错误',
+          variant: 'destructive'
+        })
+        return
+      }
+    }
+  }
+
+  const generatingNode = canvasNodes.value.find((n) => n.id === id)
+  if (generatingNode) {
+    ;(generatingNode as any).isGenerating = true
+  }
+
+  const placeholderNodeId = generateNodeId()
+  const placeholderNode: CanvasNode = {
+    id: placeholderNodeId,
+    type: 'generated-image',
+    x: node.x + node.width + 60,
+    y: node.y,
+    width: 200,
+    height: 200,
+    name: '生成结果',
+    genStatus: 'generating',
+    sourceNodeId: id
+  }
+  canvasNodes.value.push(placeholderNode)
+
+  const placeholderConnection: CanvasConnection = {
+    id: `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    sourceId: id,
+    targetId: placeholderNodeId,
+    type: 'default'
+  }
+  canvasConnections.value.push(placeholderConnection)
+
+  try {
+    const createResult = await imageGenerationService.createTask({
+      prompt: node.prompt,
+      model: node.genModel || 'nano-banana-2',
+      aspect_ratio: node.aspectRatio || 'auto',
+      resolution: node.resolution || '2k',
+      output_format: node.outputFormat || 'png',
+      image_input: imageInput
+    })
+
+    const taskId = createResult.task_id
+
+    const placeholderNodeToUpdate = canvasNodes.value.find((n) => n.id === placeholderNodeId)
+    if (placeholderNodeToUpdate) {
+      placeholderNodeToUpdate.genTaskId = taskId
+    }
+
+    toast({
+      title: '任务已创建',
+      description: `任务ID: ${taskId}`
+    })
+
+    const maxDuration = 10 * 60 * 1000
+    const startTime = Date.now()
+    let pollCount = 0
+    const pollInterval = 10000
+
+    while (Date.now() - startTime < maxDuration) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
+      pollCount++
+
+      const status = await imageGenerationService.getStatus(taskId)
+
+      if (status.status === 'success' && status.result_urls.length > 0) {
+        toast({
+          title: '图片生成成功',
+          description: `正在下载 ${status.result_urls.length} 张图片...`
+        })
+
+        const sourceGenNode = canvasNodes.value.find((n) => n.id === id)
+        if (sourceGenNode) {
+          ;(sourceGenNode as any).isGenerating = false
+        }
+
+        const firstPlaceholder = canvasNodes.value.find((n) => n.id === placeholderNodeId)
+        const projectId = defaultCanvasProject.value.project_id || undefined
+        
+        for (let i = 0; i < status.result_urls.length; i++) {
+          const resultUrl = status.result_urls[i]
+          const downloadResult = await imageGenerationService.downloadImage(resultUrl, projectId)
+          const previewUrl = await assetsService.getPreviewUrl(downloadResult.asset_id)
+
+          if (i === 0 && firstPlaceholder) {
+            firstPlaceholder.genStatus = 'success'
+            firstPlaceholder.localImagePath = previewUrl
+            firstPlaceholder.assetId = downloadResult.asset_id
+            firstPlaceholder.filePath = downloadResult.file_path
+          } else {
+            const newResultNodeId = generateNodeId()
+            const newResultNode: CanvasNode = {
+              id: newResultNodeId,
+              type: 'generated-image',
+              x: node.x + node.width + 60 + i * 220,
+              y: node.y + 220,
+              width: 200,
+              height: 200,
+              name: `生成结果 ${i + 1}`,
+              genStatus: 'success',
+              sourceNodeId: id,
+              localImagePath: previewUrl,
+              assetId: downloadResult.asset_id,
+              filePath: downloadResult.file_path
+            }
+            canvasNodes.value.push(newResultNode)
+
+            const newConnection: CanvasConnection = {
+              id: `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              sourceId: id,
+              targetId: newResultNodeId,
+              type: 'default'
+            }
+            canvasConnections.value.push(newConnection)
+          }
+        }
+
+        toast({
+          title: '图片已保存',
+          description: `已保存 ${status.result_urls.length} 张图片到资产库`
+        })
+        return
+      }
+
+      if (status.status === 'fail') {
+        throw new Error(status.error_message || '生成失败')
+      }
+
+      if (pollCount % 10 === 0) {
+        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000)
+        const statusText = status.status === 'waiting' ? '等待中' :
+                          status.status === 'queuing' ? '排队中' :
+                          status.status === 'generating' ? '生成中' : status.status
+        toast({
+          title: `任务${statusText}`,
+          description: `已等待 ${elapsedSeconds} 秒`
+        })
+      }
+    }
+
+    throw new Error('生成超时（超过10分钟）')
+  } catch (error: any) {
+    console.error('生成图片失败:', error)
+
+    const sourceGenNode = canvasNodes.value.find((n) => n.id === id)
+    if (sourceGenNode) {
+      ;(sourceGenNode as any).isGenerating = false
+    }
+
+    const failedPlaceholder = canvasNodes.value.find((n) => n.id === placeholderNodeId)
+    if (failedPlaceholder) {
+      failedPlaceholder.genStatus = 'failed'
+      failedPlaceholder.genError = error.message || '未知错误'
+    }
+
+    toast({
+      title: '生成失败',
+      description: error.message || '未知错误',
+      variant: 'destructive'
+    })
+  }
+}
+
+const handleNodeConvertToAsset = async (nodeId: string, assetId: number): Promise<void> => {
+  const node = canvasNodes.value.find((n) => n.id === nodeId)
+  if (!node) return
+
+  try {
+    const asset = await assetsService.getById(assetId)
+    const previewUrl = await assetsService.getPreviewUrl(assetId)
+
+    canvasNodes.value = canvasNodes.value.map((n) => {
+      if (n.id === nodeId) {
+        return {
+          id: nodeId,
+          type: 'asset' as const,
+          x: n.x,
+          y: n.y,
+          width: n.width,
+          height: n.height,
+          assetId: asset.id,
+          name: asset.name,
+          category: asset.category,
+          sub_category: asset.sub_category,
+          filePath: asset.file_path,
+          fileType: asset.file_type,
+          localImagePath: previewUrl
+        } as CanvasNode
+      }
+      return n
+    })
+
+    toast({
+      title: '保存成功',
+      description: '图片已保存到新位置，节点已转换为资产节点'
+    })
+  } catch (error: any) {
+    console.error('转换节点失败:', error)
+    toast({
+      title: '转换失败',
+      description: error.message || '未知错误',
+      variant: 'destructive'
+    })
   }
 }
 
@@ -492,12 +889,111 @@ const handleClearCanvas = (): void => {
     () => {
       canvasNodes.value = []
       canvasConnections.value = []
-      currentCanvasName.value = null
-      currentCanvasId.value = null
       canvasViewport.value = { x: 0, y: 0, scale: 1 }
     },
     'danger'
   )
+}
+
+const checkPendingGeneratingNodes = async (): Promise<void> => {
+  const generatingNodes = canvasNodes.value.filter(
+    (n) => n.type === 'generated-image' && n.genStatus === 'generating' && n.genTaskId
+  )
+
+  if (generatingNodes.length === 0) return
+
+  toast({
+    title: '检查未完成的生成任务',
+    description: `发现 ${generatingNodes.length} 个正在生成的节点，正在检查状态...`
+  })
+
+  for (const node of generatingNodes) {
+    if (!node.genTaskId) continue
+
+    try {
+      const status = await imageGenerationService.getStatus(node.genTaskId)
+
+      if (status.status === 'success' && status.result_urls.length > 0) {
+        toast({
+          title: '图片生成成功',
+          description: `正在下载 ${status.result_urls.length} 张图片...`
+        })
+
+        const projectId = defaultCanvasProject.value.project_id || undefined
+
+        for (let i = 0; i < status.result_urls.length; i++) {
+          const resultUrl = status.result_urls[i]
+          const downloadResult = await imageGenerationService.downloadImage(resultUrl, projectId)
+          const previewUrl = await assetsService.getPreviewUrl(downloadResult.asset_id)
+
+          if (i === 0) {
+            node.genStatus = 'success'
+            node.genTaskId = undefined
+            node.localImagePath = previewUrl
+            node.assetId = downloadResult.asset_id
+            node.filePath = downloadResult.file_path
+          } else {
+            const newNodeId = `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            const newNode: CanvasNode = {
+              id: newNodeId,
+              type: 'generated-image',
+              x: node.x + i * 220,
+              y: node.y + 220,
+              width: 200,
+              height: 200,
+              name: `生成结果 ${i + 1}`,
+              genStatus: 'success',
+              sourceNodeId: node.sourceNodeId,
+              localImagePath: previewUrl,
+              assetId: downloadResult.asset_id,
+              filePath: downloadResult.file_path
+            }
+            canvasNodes.value.push(newNode)
+          }
+        }
+
+        toast({
+          title: '图片已保存',
+          description: `已保存 ${status.result_urls.length} 张图片到资产库`
+        })
+      } else if (status.status === 'fail') {
+        node.genStatus = 'failed'
+        node.genTaskId = undefined
+        node.genError = status.error_message || '生成失败'
+
+        toast({
+          title: '生成任务失败',
+          description: status.error_message || '生成失败',
+          variant: 'destructive'
+        })
+      } else {
+        const statusText =
+          status.status === 'waiting'
+            ? '等待中'
+            : status.status === 'queuing'
+              ? '排队中'
+              : status.status === 'generating'
+                ? '生成中'
+                : status.status
+
+        toast({
+          title: '任务仍在进行中',
+          description: `节点 "${node.name}" 状态: ${statusText}，请稍后刷新查看`
+        })
+      }
+    } catch (error: any) {
+      console.error(`检查任务状态失败 (${node.genTaskId}):`, error)
+      node.genStatus = 'failed'
+      node.genTaskId = undefined
+      node.genError = error.message || '检查状态失败'
+
+      toast({
+        title: '检查任务状态失败',
+        description: error.message || '未知错误',
+        variant: 'destructive'
+      })
+    }
+  }
 }
 
 const loadProjects = async (): Promise<void> => {
@@ -516,12 +1012,17 @@ const loadDefaultCanvasProject = async (): Promise<void> => {
   }
 }
 
-const loadCanvasList = async (): Promise<void> => {
-  if (!defaultCanvasProject.value.project_id) return
+const loadCanvasList = async (projectId?: number): Promise<void> => {
+  const effectiveProjectId = projectId ?? defaultCanvasProject.value.project_id
+  if (!effectiveProjectId) {
+    console.warn('loadCanvasList: 没有 project_id，跳过加载')
+    return
+  }
 
   canvasListLoading.value = true
   try {
-    canvasList.value = await canvasService.getAll(defaultCanvasProject.value.project_id)
+    canvasList.value = await canvasService.getAll(effectiveProjectId)
+    console.log('loadCanvasList: 加载成功，画布数量:', canvasList.value.length)
   } catch (error) {
     console.error('加载画布列表失败:', error)
     canvasList.value = []
@@ -530,14 +1031,46 @@ const loadCanvasList = async (): Promise<void> => {
   }
 }
 
-const handleLoadCanvas = async (canvasIdOrAction: string): Promise<void> => {
-  if (canvasIdOrAction === '__new__') {
+const autoSaveCanvas = async (): Promise<boolean> => {
+  if (!currentCanvasId.value || !currentCanvasName.value) {
+    return false
+  }
+  
+  if (canvasNodes.value.length === 0 && canvasConnections.value.length === 0) {
+    return false
+  }
+
+  try {
+    await canvasService.update(currentCanvasId.value, {
+      name: currentCanvasName.value,
+      nodes: canvasNodes.value,
+      connections: canvasConnections.value,
+      viewport: canvasViewport.value
+    })
+    console.log('自动保存画布成功:', currentCanvasName.value)
+    return true
+  } catch (error) {
+    console.error('自动保存画布失败:', error)
+    return false
+  }
+}
+
+const handleLoadCanvas = async (canvasIdOrAction: unknown): Promise<void> => {
+  if (!canvasIdOrAction) return
+
+  const actionStr = String(canvasIdOrAction)
+  if (actionStr === '__new__') {
+    await autoSaveCanvas()
     handleNewCanvas()
     return
   }
 
-  const canvasId = parseInt(canvasIdOrAction, 10)
+  const canvasId = parseInt(actionStr, 10)
   if (isNaN(canvasId)) return
+
+  if (canvasId !== currentCanvasId.value) {
+    await autoSaveCanvas()
+  }
 
   try {
     const canvas = await canvasService.get(canvasId)
@@ -546,6 +1079,8 @@ const handleLoadCanvas = async (canvasIdOrAction: string): Promise<void> => {
     canvasViewport.value = canvas.viewport || { x: 0, y: 0, scale: 1 }
     currentCanvasName.value = canvas.name
     currentCanvasId.value = canvas.id
+
+    await checkPendingGeneratingNodes()
   } catch (error) {
     console.error('加载画布失败:', error)
     toast({ title: '加载画布失败', variant: 'destructive' })
@@ -553,31 +1088,18 @@ const handleLoadCanvas = async (canvasIdOrAction: string): Promise<void> => {
 }
 
 const handleNewCanvas = (): void => {
-  canvasNodes.value = []
-  canvasConnections.value = []
-  canvasViewport.value = { x: 0, y: 0, scale: 1 }
-  currentCanvasName.value = null
-  currentCanvasId.value = null
-}
-
-const handleSaveCanvas = async (): Promise<void> => {
-  if (projects.value.length === 0) {
-    await loadProjects()
-  }
-
   if (projects.value.length === 0) {
     toast({
       title: '请先创建一个项目',
-      description: '需要先创建资产项目才能保存画布',
+      description: '需要先创建资产项目才能创建画布',
       variant: 'destructive'
     })
     return
   }
-
-  saveCanvasDialogOpen.value = true
+  newCanvasDialogOpen.value = true
 }
 
-const handleSaveCanvasConfirm = async (projectId: number, name: string): Promise<void> => {
+const handleNewCanvasConfirm = async (projectId: number, name: string): Promise<void> => {
   try {
     await canvasService.setDefaultProject(projectId)
     defaultCanvasProject.value = {
@@ -587,34 +1109,29 @@ const handleSaveCanvasConfirm = async (projectId: number, name: string): Promise
 
     const data = {
       name: name,
-      nodes: canvasNodes.value,
-      connections: canvasConnections.value,
-      viewport: canvasViewport.value,
+      nodes: [],
+      connections: [],
+      viewport: { x: 0, y: 0, scale: 1 },
       project_id: projectId
     }
 
-    if (currentCanvasId.value) {
-      await canvasService.update(currentCanvasId.value, {
-        name: name,
-        nodes: canvasNodes.value,
-        connections: canvasConnections.value,
-        viewport: canvasViewport.value
-      })
-    } else {
-      const result = await canvasService.save(data)
-      currentCanvasId.value = result.id
-    }
-
+    const result = await canvasService.save(data)
+    
+    canvasNodes.value = []
+    canvasConnections.value = []
+    canvasViewport.value = { x: 0, y: 0, scale: 1 }
+    currentCanvasId.value = result.id
     currentCanvasName.value = name
-    await loadCanvasList()
+    
+    await loadCanvasList(projectId)
     toast({
-      title: '画布保存成功',
-      description: `画布"${name}"已保存`
+      title: '画布创建成功',
+      description: `画布"${name}"已创建`
     })
   } catch (error) {
-    console.error('保存画布失败:', error)
+    console.error('创建画布失败:', error)
     toast({
-      title: '保存画布失败',
+      title: '创建画布失败',
       variant: 'destructive'
     })
   }
@@ -637,11 +1154,52 @@ watch(
   }
 )
 
-onMounted(() => {
+watch(currentSegment, async (newSegment, oldSegment) => {
+  if (oldSegment === '画布' && newSegment !== '画布') {
+    await autoSaveCanvas()
+  }
+})
+
+onBeforeRouteLeave(async () => {
+  if (currentSegment.value === '画布') {
+    await autoSaveCanvas()
+  }
+})
+
+const handleBeforeUnload = async (): Promise<void> => {
+  await autoSaveCanvas()
+}
+
+const isSavingOnClose = ref(false)
+
+const handlePrepareClose = async (): Promise<void> => {
+  if (currentSegment.value === '画布' && currentCanvasId.value) {
+    isSavingOnClose.value = true
+    await autoSaveCanvas()
+    isSavingOnClose.value = false
+  }
+  window.api.allowClose()
+}
+
+onMounted(async () => {
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  window.api.onPrepareClose(handlePrepareClose)
   fetchWorkflows()
   fetchOrders()
-  loadProjects()
-  loadDefaultCanvasProject()
+  await loadProjects()
+  await loadDefaultCanvasProject()
+  
+  if (savedCanvasState.value.projectId) {
+    await loadCanvasList(savedCanvasState.value.projectId)
+  }
+  
+  if (savedCanvasState.value.canvasId && canvasNodes.value.length > 0) {
+    await checkPendingGeneratingNodes()
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 </script>
 
@@ -778,12 +1336,7 @@ onMounted(() => {
             >
               ({{ defaultCanvasProject.project_name }})
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              class="rounded-xl gap-2"
-              @click="assetDrawerOpen = !assetDrawerOpen"
-            >
+            <Button variant="outline" size="sm" class="rounded-xl gap-2" @click="assetDrawerOpen = !assetDrawerOpen">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <rect
                   x="2"
@@ -797,23 +1350,6 @@ onMounted(() => {
                 <path d="M6 2V14M10 2V14" stroke="currentColor" stroke-width="1.5" />
               </svg>
               资产库
-            </Button>
-            <Button variant="outline" size="sm" class="rounded-xl gap-2" @click="handleSaveCanvas">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M13 3v10a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1h8a1 1 0 011 1z"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                />
-                <path
-                  d="M6 8l2 2 4-4"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              保存
             </Button>
             <span class="text-sm text-zinc-500 dark:text-zinc-400">
               {{ canvasNodes.length }} 个节点
@@ -852,6 +1388,10 @@ onMounted(() => {
             @asset-drop="handleAssetDrop"
             @node-generate="handleNodeGenerate"
             @viewport-change="handleViewportChange"
+            @node-convert-to-asset="handleNodeConvertToAsset"
+            @node-delete-with-confirm="handleNodeDeleteWithConfirm"
+            @node-open-file="handleNodeOpenFile"
+            @node-open-folder="handleNodeOpenFolder"
           />
         </div>
       </div>
@@ -880,19 +1420,44 @@ onMounted(() => {
       @confirm="handleConfirmDialogConfirm"
     />
 
-    <SaveCanvasDialog
-      v-model:open="saveCanvasDialogOpen"
+    <NewCanvasDialog
+      v-model:open="newCanvasDialogOpen"
       :projects="projects"
       :default-project-id="defaultCanvasProject.project_id"
-      :default-project-name="defaultCanvasProject.project_name"
-      :canvas-name="currentCanvasName"
-      :is-update="!!currentCanvasId"
-      @confirm="handleSaveCanvasConfirm"
+      @confirm="handleNewCanvasConfirm"
     />
+
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="isSavingOnClose"
+          class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        >
+          <div
+            class="flex flex-col items-center gap-4 px-8 py-6 bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl"
+          >
+            <div
+              class="w-10 h-10 border-3 border-zinc-200 dark:border-zinc-700 border-t-zinc-900 dark:border-t-white rounded-full animate-spin"
+            ></div>
+            <span class="text-lg font-medium text-zinc-900 dark:text-zinc-100">正在保存数据...</span>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
 .fade-slide-enter-active,
 .fade-slide-leave-active {
   transition: all 0.3s ease;

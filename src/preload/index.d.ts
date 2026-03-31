@@ -30,6 +30,8 @@ declare global {
       windowMaximize: () => Promise<boolean>
       windowClose: () => void
       windowIsMaximized: () => Promise<boolean>
+      allowClose: () => void
+      onPrepareClose: (callback: () => void) => void
       checkForUpdates: (silent?: boolean) => Promise<void>
       downloadUpdate: () => Promise<void>
       quitAndInstall: () => Promise<void>

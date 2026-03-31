@@ -125,9 +125,7 @@ defineExpose({
               </p>
             </div>
 
-            <p class="text-xs text-zinc-400">
-              目录应包含 prompts、images、audios、videos 等子目录
-            </p>
+            <p class="text-xs text-zinc-400">目录应包含 prompts、images、audios、videos 等子目录</p>
           </div>
 
           <div class="flex justify-end gap-3 px-6 py-4 border-t border-black/5 dark:border-white/5">

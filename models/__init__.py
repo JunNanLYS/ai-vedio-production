@@ -4,5 +4,6 @@ from models.product import Product
 from models.asset import Asset
 from models.project import Project, SubCategory
 from models.canvas import CanvasAsset
+from models.api_config import ApiConfig
 
-__all__ = ["Order", "Workflow", "Product", "Asset", "Project", "SubCategory", "CanvasAsset"]
+__all__ = ["Order", "Workflow", "Product", "Asset", "Project", "SubCategory", "CanvasAsset", "ApiConfig"]

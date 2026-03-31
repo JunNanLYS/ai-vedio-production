@@ -13,4 +13,5 @@ dependencies = [
     "uvicorn>=0.42.0",
     "opencv-python>=4.10.0.84",
     "nuitka>=4.0.7",
+    "httpx>=0.27.0",
 ]

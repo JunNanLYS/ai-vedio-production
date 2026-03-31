@@ -15,6 +15,8 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   resize: [{ width: number; height: number; x?: number; y?: number }]
   update: [updates: Partial<CanvasNode>]
+  contextmenu: [event: MouseEvent]
+  mousedown: [event: MouseEvent]
 }>()
 
 const MIN_WIDTH = 120
@@ -53,14 +55,14 @@ const resizeState = ref<{
 } | null>(null)
 
 const resizeCursors: Record<string, string> = {
-  'n': 'ns-resize',
-  's': 'ns-resize',
-  'e': 'ew-resize',
-  'w': 'ew-resize',
-  'ne': 'nesw-resize',
-  'sw': 'nesw-resize',
-  'nw': 'nwse-resize',
-  'se': 'nwse-resize'
+  n: 'ns-resize',
+  s: 'ns-resize',
+  e: 'ew-resize',
+  w: 'ew-resize',
+  ne: 'nesw-resize',
+  sw: 'nesw-resize',
+  nw: 'nwse-resize',
+  se: 'nwse-resize'
 }
 
 const getResizeCursor = (direction: string) => resizeCursors[direction] || 'default'
@@ -68,7 +70,7 @@ const getResizeCursor = (direction: string) => resizeCursors[direction] || 'defa
 const handleResizeStart = (e: MouseEvent, direction: string) => {
   e.preventDefault()
   e.stopPropagation()
-  
+
   resizeState.value = {
     isResizing: true,
     direction,
@@ -79,23 +81,24 @@ const handleResizeStart = (e: MouseEvent, direction: string) => {
     startNodeX: props.node.x,
     startNodeY: props.node.y
   }
-  
+
   document.addEventListener('mousemove', handleResizeMove)
   document.addEventListener('mouseup', handleResizeEnd)
 }
 
 const handleResizeMove = (e: MouseEvent) => {
   if (!resizeState.value) return
-  
-  const { direction, startX, startY, startWidth, startHeight, startNodeX, startNodeY } = resizeState.value
+
+  const { direction, startX, startY, startWidth, startHeight, startNodeX, startNodeY } =
+    resizeState.value
   const deltaX = (e.clientX - startX) / props.scale
   const deltaY = (e.clientY - startY) / props.scale
-  
+
   let newWidth = startWidth
   let newHeight = startHeight
   let newNodeX: number | undefined
   let newNodeY: number | undefined
-  
+
   if (direction.includes('e')) {
     newWidth = Math.max(MIN_WIDTH, startWidth + deltaX)
   }
@@ -122,7 +125,7 @@ const handleResizeMove = (e: MouseEvent) => {
       newNodeY = startNodeY + startHeight - MIN_HEIGHT
     }
   }
-  
+
   emit('resize', { width: newWidth, height: newHeight, x: newNodeX, y: newNodeY })
 }
 
@@ -135,16 +138,28 @@ const handleResizeEnd = () => {
 
 <template>
   <div
-    class="absolute rounded-xl border-2 cursor-move transition-shadow duration-200 overflow-hidden group"
+    class="absolute rounded-xl border-2 cursor-move transition-shadow duration-200 overflow-hidden pointer-events-auto group"
     :class="[
       'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700',
       selected ? 'ring-2 ring-blue-500 ring-offset-2 shadow-lg' : 'shadow-md hover:shadow-lg'
     ]"
     :style="nodeStyle"
+    @contextmenu="emit('contextmenu', $event)"
+    @mousedown="emit('mousedown', $event)"
   >
     <div class="flex flex-col h-full">
-      <div class="flex items-center gap-2 px-3 py-2 border-b border-yellow-200 dark:border-yellow-800 bg-white/50 dark:bg-black/20">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="text-yellow-600 dark:text-yellow-400">
+      <div
+        class="flex items-center gap-2 px-3 py-2 border-b border-yellow-200 dark:border-yellow-800 bg-white/50 dark:bg-black/20"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          class="text-yellow-600 dark:text-yellow-400"
+        >
           <path d="M3 3H13M8 3V13M5 13H11" />
         </svg>
         <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate flex-1">
@@ -152,7 +167,7 @@ const handleResizeEnd = () => {
         </span>
       </div>
 
-      <div 
+      <div
         class="flex-1 flex items-center justify-center overflow-hidden bg-black/5 dark:bg-black/20 p-2"
         @dblclick="startEditing"
       >
@@ -161,15 +176,21 @@ const handleResizeEnd = () => {
           ref="textareaRef"
           :value="node.text || ''"
           placeholder="输入注释..."
-          class="w-full h-full text-sm bg-transparent resize-none focus:outline-none"
+          class="w-full h-full text-sm bg-transparent resize-none focus:outline-none select-text"
           @input="emit('update', { text: ($event.target as HTMLTextAreaElement).value })"
           @blur="stopEditing"
           @keydown.esc="stopEditing"
+          @mousedown.stop
+          @wheel.stop
         ></textarea>
         <div
           v-else
           class="w-full h-full text-sm whitespace-pre-wrap overflow-auto"
-          :class="node.text ? 'text-zinc-700 dark:text-zinc-300' : 'text-zinc-400 dark:text-zinc-600'"
+          :class="
+            node.text ? 'text-zinc-700 dark:text-zinc-300' : 'text-zinc-400 dark:text-zinc-600'
+          "
+          @mousedown.stop
+          @wheel.stop
         >
           {{ node.text || '双击编辑注释...' }}
         </div>

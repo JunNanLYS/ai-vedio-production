@@ -32,8 +32,21 @@ const handleClose = () => {
         class="w-11 h-10 flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
         title="最小化"
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="1" y="5.5" width="10" height="1" fill="currentColor" class="text-zinc-600 dark:text-zinc-300"/>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect
+            x="1"
+            y="5.5"
+            width="10"
+            height="1"
+            fill="currentColor"
+            class="text-zinc-600 dark:text-zinc-300"
+          />
         </svg>
       </button>
       <button
@@ -41,12 +54,51 @@ const handleClose = () => {
         class="w-11 h-10 flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
         :title="isMaximized ? '还原' : '最大化'"
       >
-        <svg v-if="!isMaximized" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="1.5" y="1.5" width="9" height="9" stroke="currentColor" stroke-width="1" class="text-zinc-600 dark:text-zinc-300"/>
+        <svg
+          v-if="!isMaximized"
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect
+            x="1.5"
+            y="1.5"
+            width="9"
+            height="9"
+            stroke="currentColor"
+            stroke-width="1"
+            class="text-zinc-600 dark:text-zinc-300"
+          />
         </svg>
-        <svg v-else width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="3" y="0" width="9" height="9" stroke="currentColor" stroke-width="1" class="text-zinc-600 dark:text-zinc-300"/>
-          <rect x="0" y="3" width="9" height="9" stroke="currentColor" stroke-width="1" fill="currentColor" class="text-white dark:text-zinc-900"/>
+        <svg
+          v-else
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect
+            x="3"
+            y="0"
+            width="9"
+            height="9"
+            stroke="currentColor"
+            stroke-width="1"
+            class="text-zinc-600 dark:text-zinc-300"
+          />
+          <rect
+            x="0"
+            y="3"
+            width="9"
+            height="9"
+            stroke="currentColor"
+            stroke-width="1"
+            fill="currentColor"
+            class="text-white dark:text-zinc-900"
+          />
         </svg>
       </button>
       <button
@@ -54,8 +106,19 @@ const handleClose = () => {
         class="w-11 h-10 flex items-center justify-center hover:bg-red-500 transition-colors group"
         title="关闭"
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.2" class="text-zinc-600 dark:text-zinc-300 group-hover:text-white"/>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M1 1L11 11M11 1L1 11"
+            stroke="currentColor"
+            stroke-width="1.2"
+            class="text-zinc-600 dark:text-zinc-300 group-hover:text-white"
+          />
         </svg>
       </button>
     </div>

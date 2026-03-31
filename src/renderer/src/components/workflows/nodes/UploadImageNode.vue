@@ -15,6 +15,8 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   resize: [{ width: number; height: number; x?: number; y?: number }]
   update: [updates: Partial<CanvasNode>]
+  contextmenu: [event: MouseEvent]
+  mousedown: [event: MouseEvent]
 }>()
 
 const MIN_WIDTH = 120
@@ -170,13 +172,15 @@ const handleResizeEnd = () => {
 
 <template>
   <div
-    class="absolute rounded-xl border-2 cursor-move transition-shadow duration-200 overflow-hidden group"
+    class="absolute rounded-xl border-2 cursor-move transition-shadow duration-200 overflow-hidden pointer-events-auto group"
     :class="[
       'bg-orange-50 dark:bg-orange-900/20 border-orange-300 dark:border-orange-700',
       selected ? 'ring-2 ring-blue-500 ring-offset-2 shadow-lg' : 'shadow-md hover:shadow-lg',
       isDragging ? 'border-orange-500 dark:border-orange-500' : ''
     ]"
     :style="nodeStyle"
+    @contextmenu="emit('contextmenu', $event)"
+    @mousedown="emit('mousedown', $event)"
   >
     <div class="flex flex-col h-full">
       <div

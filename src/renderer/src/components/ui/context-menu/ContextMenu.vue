@@ -102,6 +102,10 @@ defineExpose({ show, hide })
                 v-else-if="item.icon === 'trash'"
                 d="M5 4H3V6H4V12C4 13.1046 4.89543 14 6 14H10C11.1046 14 12 13.1046 12 12V6H13V4H5ZM6 6H10V12H6V6ZM7 2H9V4H7V2Z"
               />
+              <path
+                v-else-if="item.icon === 'grid'"
+                d="M1 1H7V7H1V1ZM9 1H15V7H9V1ZM1 9H7V15H1V9ZM9 9H15V15H9V9Z"
+              />
             </svg>
             <span>{{ item.label }}</span>
           </button>

@@ -6,8 +6,8 @@ import UploadImageNode from './nodes/UploadImageNode.vue'
 import GenerateImageNode from './nodes/GenerateImageNode.vue'
 import GeneratedImageNode from './nodes/GeneratedImageNode.vue'
 import TextAnnotationNode from './nodes/TextAnnotationNode.vue'
+import GridImageNode from './nodes/GridImageNode.vue'
 import { ContextMenu } from '@/components/ui/context-menu'
-import { useToast } from '@/components/ui/toast'
 
 interface Props {
   node: CanvasNode
@@ -31,7 +31,6 @@ const emit = defineEmits<{
   mousedown: [event: MouseEvent]
 }>()
 
-const { toast } = useToast()
 const contextMenuRef = ref<InstanceType<typeof ContextMenu> | null>(null)
 const contextMenuPosition = ref({ x: 0, y: 0 })
 
@@ -274,6 +273,18 @@ const handleDeleteNode = () => {
     :scale="scale"
     @resize="emit('resize', $event)"
     @update="handleUpdate"
+    @contextmenu="handleContextMenu"
+    @mousedown="emit('mousedown', $event)"
+  />
+  <GridImageNode
+    v-else-if="node.type === 'grid-image'"
+    :node="node"
+    :selected="selected"
+    :scale="scale"
+    :reference-images="referenceImages"
+    @resize="emit('resize', $event)"
+    @update="handleUpdate"
+    @generate="emit('generate')"
     @contextmenu="handleContextMenu"
     @mousedown="emit('mousedown', $event)"
   />

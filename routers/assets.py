@@ -1,11 +1,15 @@
 import os
 import shutil
 import hashlib
+import asyncio
+import aiofiles
 from typing import List, Optional
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 from pydantic import BaseModel
 
 import cv2
@@ -13,6 +17,7 @@ from database import get_session
 from models import Asset, Project, SubCategory
 from loguru import logger
 from PIL import Image
+from cache import cache_manager, clear_cache
 
 router = APIRouter(prefix="/api", tags=["assets"])
 
@@ -21,6 +26,8 @@ CURRENT_PROJECT_FILE = Path(__file__).parent.parent / "current_project.txt"
 PREVIEW_CACHE_DIR = Path(__file__).parent.parent / "preview_cache"
 
 PREVIEW_SIZE = (256, 256)
+
+executor = ThreadPoolExecutor(max_workers=4)
 
 ALLOWED_EXTENSIONS = {
     "prompt": [".txt", ".md", ".json"],
@@ -101,9 +108,17 @@ def validate_file_extension(category: str, file_extension: str) -> bool:
 
 def get_current_project_id() -> Optional[int]:
     """获取当前项目ID"""
+    cache_key = "current_project_id"
+    
+    cached_value = cache_manager.get(cache_key)
+    if cached_value is not None:
+        return cached_value
+    
     if CURRENT_PROJECT_FILE.exists():
         try:
-            return int(CURRENT_PROJECT_FILE.read_text().strip())
+            project_id = int(CURRENT_PROJECT_FILE.read_text().strip())
+            cache_manager.set(cache_key, project_id)
+            return project_id
         except:
             return None
     return None
@@ -112,23 +127,24 @@ def get_current_project_id() -> Optional[int]:
 def set_current_project_id(project_id: int):
     """设置当前项目ID"""
     CURRENT_PROJECT_FILE.write_text(str(project_id))
+    clear_cache("current_project_id")
 
 
 # ==================== 项目管理 API ====================
 
 @router.get("/projects")
-def get_projects(session: Session = Depends(get_session)) -> List[Project]:
+async def get_projects(session: AsyncSession = Depends(get_session)) -> List[Project]:
     """获取所有项目列表"""
     statement = select(Project).order_by(Project.created_at.desc())
-    projects = session.exec(statement).all()
+    projects = (await session.exec(statement)).all()
     logger.info(f"获取项目列表，共 {len(projects)} 个")
     return projects
 
 
 @router.post("/projects")
-def create_project(
+async def create_project(
     project_data: ProjectCreate,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> Project:
     """创建新项目"""
     safe_project_name = project_data.project_name.replace("..", "").replace("/", "_").replace("\\", "_")
@@ -155,8 +171,8 @@ def create_project(
         path=str(project_path)
     )
     session.add(project)
-    session.commit()
-    session.refresh(project)
+    await session.commit()
+    await session.refresh(project)
     
     for category, subcats in DEFAULT_SUBCATEGORIES.items():
         for subcat in subcats:
@@ -166,7 +182,7 @@ def create_project(
                 project_id=project.id
             )
             session.add(sub_category)
-    session.commit()
+    await session.commit()
     
     set_current_project_id(project.id)
     
@@ -175,14 +191,14 @@ def create_project(
 
 
 @router.get("/projects/current")
-def get_current_project(session: Session = Depends(get_session)) -> dict:
+async def get_current_project(session: AsyncSession = Depends(get_session)) -> dict:
     """获取当前项目"""
     project_id = get_current_project_id()
     if not project_id:
         return {"project": None}
     
     statement = select(Project).where(Project.id == project_id)
-    project = session.exec(statement).first()
+    project = (await session.exec(statement)).first()
     
     if not project:
         return {"project": None}
@@ -191,10 +207,10 @@ def get_current_project(session: Session = Depends(get_session)) -> dict:
 
 
 @router.post("/projects/switch/{project_id}")
-def switch_project(project_id: int, session: Session = Depends(get_session)) -> dict:
+async def switch_project(project_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     """切换当前项目"""
     statement = select(Project).where(Project.id == project_id)
-    project = session.exec(statement).first()
+    project = (await session.exec(statement)).first()
     
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -205,10 +221,10 @@ def switch_project(project_id: int, session: Session = Depends(get_session)) -> 
 
 
 @router.delete("/projects/{project_id}")
-def delete_project(project_id: int, session: Session = Depends(get_session)) -> dict:
+async def delete_project(project_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     """删除项目"""
     statement = select(Project).where(Project.id == project_id)
-    project = session.exec(statement).first()
+    project = (await session.exec(statement)).first()
     
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -218,24 +234,25 @@ def delete_project(project_id: int, session: Session = Depends(get_session)) -> 
         shutil.rmtree(project_path)
     
     subcat_statement = select(SubCategory).where(SubCategory.project_id == project_id)
-    subcats = session.exec(subcat_statement).all()
+    subcats = (await session.exec(subcat_statement)).all()
     for subcat in subcats:
-        session.delete(subcat)
+        await session.delete(subcat)
     
-    session.delete(project)
-    session.commit()
+    await session.delete(project)
+    await session.commit()
     
     if get_current_project_id() == project_id:
         CURRENT_PROJECT_FILE.unlink(missing_ok=True)
+        clear_cache("current_project_id")
     
     logger.info(f"删除项目: {project.name}")
     return {"message": "项目已删除"}
 
 
 @router.post("/projects/load")
-def load_project(
+async def load_project(
     data: LoadProjectRequest,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> dict:
     """加载已有项目目录"""
     project_path = Path(data.project_path)
@@ -247,7 +264,7 @@ def load_project(
         raise HTTPException(status_code=400, detail="指定路径不是目录")
     
     existing_statement = select(Project).where(Project.path == str(project_path))
-    existing_project = session.exec(existing_statement).first()
+    existing_project = (await session.exec(existing_statement)).first()
     if existing_project:
         raise HTTPException(
             status_code=400, 
@@ -266,18 +283,18 @@ def load_project(
         path=str(project_path)
     )
     session.add(project)
-    session.commit()
-    session.refresh(project)
+    await session.commit()
+    await session.refresh(project)
     
     for category, subcats in DEFAULT_SUBCATEGORIES.items():
         for subcat in subcats:
-            existing_subcat = session.exec(
+            existing_subcat = (await session.exec(
                 select(SubCategory).where(
                     SubCategory.category == category,
                     SubCategory.name == subcat["name"],
                     SubCategory.project_id == project.id
                 )
-            ).first()
+            )).first()
             if not existing_subcat:
                 sub_category = SubCategory(
                     category=category,
@@ -285,9 +302,9 @@ def load_project(
                     project_id=project.id
                 )
                 session.add(sub_category)
-    session.commit()
+    await session.commit()
     
-    loaded_assets = scan_and_import_assets(project, session)
+    loaded_assets = await scan_and_import_assets(project, session)
     
     set_current_project_id(project.id)
     
@@ -299,7 +316,7 @@ def load_project(
     }
 
 
-def scan_and_import_assets(project: Project, session: Session) -> int:
+async def scan_and_import_assets(project: Project, session: AsyncSession) -> int:
     """扫描项目目录并导入资产"""
     project_path = Path(project.path)
     loaded_count = 0
@@ -321,12 +338,12 @@ def scan_and_import_assets(project: Project, session: Session) -> int:
             
             relative_path = str(file_path.relative_to(project_path))
             
-            existing = session.exec(
+            existing = (await session.exec(
                 select(Asset).where(
                     Asset.project_id == project.id,
                     Asset.file_path == relative_path
                 )
-            ).first()
+            )).first()
             if existing:
                 continue
             
@@ -335,13 +352,13 @@ def scan_and_import_assets(project: Project, session: Session) -> int:
             sub_category = parent_dir if parent_dir != category_dir_name else ""
             
             if sub_category:
-                existing_subcat = session.exec(
+                existing_subcat = (await session.exec(
                     select(SubCategory).where(
                         SubCategory.category == category,
                         SubCategory.name == sub_category,
                         SubCategory.project_id == project.id
                     )
-                ).first()
+                )).first()
                 if not existing_subcat:
                     new_subcat = SubCategory(
                         category=category,
@@ -362,7 +379,7 @@ def scan_and_import_assets(project: Project, session: Session) -> int:
             loaded_count += 1
     
     if loaded_count > 0:
-        session.commit()
+        await session.commit()
     
     return loaded_count
 
@@ -370,10 +387,10 @@ def scan_and_import_assets(project: Project, session: Session) -> int:
 # ==================== 子分类管理 API ====================
 
 @router.get("/subcategories")
-def get_subcategories(
+async def get_subcategories(
     category: Optional[str] = None,
     project_id: Optional[int] = None,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> List[SubCategory]:
     """获取子分类列表"""
     effective_project_id = project_id or get_current_project_id()
@@ -386,15 +403,15 @@ def get_subcategories(
     if category:
         statement = statement.where(SubCategory.category == category)
     
-    subcategories = session.exec(statement).all()
+    subcategories = (await session.exec(statement)).all()
     
     return subcategories
 
 
 @router.post("/subcategories")
-def create_subcategory(
+async def create_subcategory(
     data: SubCategoryCreate,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> SubCategory:
     """创建子分类"""
     if data.category not in CATEGORY_DIRS:
@@ -407,7 +424,7 @@ def create_subcategory(
         SubCategory.name == data.name,
         SubCategory.project_id == project_id
     )
-    existing = session.exec(statement).first()
+    existing = (await session.exec(statement)).first()
     if existing:
         raise HTTPException(status_code=400, detail="该子分类已存在")
     
@@ -417,12 +434,12 @@ def create_subcategory(
         project_id=project_id
     )
     session.add(subcategory)
-    session.commit()
-    session.refresh(subcategory)
+    await session.commit()
+    await session.refresh(subcategory)
     
     if project_id:
         project_statement = select(Project).where(Project.id == project_id)
-        project = session.exec(project_statement).first()
+        project = (await session.exec(project_statement)).first()
         if project:
             category_dir_name = CATEGORY_DIRS[data.category]
             category_path = Path(project.path) / category_dir_name / data.name
@@ -433,16 +450,16 @@ def create_subcategory(
 
 
 @router.delete("/subcategories/{subcategory_id}")
-def delete_subcategory(subcategory_id: int, session: Session = Depends(get_session)) -> dict:
+async def delete_subcategory(subcategory_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     """删除子分类"""
     statement = select(SubCategory).where(SubCategory.id == subcategory_id)
-    subcategory = session.exec(statement).first()
+    subcategory = (await session.exec(statement)).first()
     
     if not subcategory:
         raise HTTPException(status_code=404, detail="子分类不存在")
     
-    session.delete(subcategory)
-    session.commit()
+    await session.delete(subcategory)
+    await session.commit()
     
     logger.info(f"删除子分类: {subcategory.name}")
     return {"message": "子分类已删除"}
@@ -451,10 +468,10 @@ def delete_subcategory(subcategory_id: int, session: Session = Depends(get_sessi
 # ==================== 资产管理 API ====================
 
 @router.get("/assets")
-def get_assets(
+async def get_assets(
     category: Optional[str] = None,
     project_id: Optional[int] = None,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> List[Asset]:
     """获取资产列表"""
     effective_project_id = project_id or get_current_project_id()
@@ -467,24 +484,24 @@ def get_assets(
     if category:
         statement = statement.where(Asset.category == category)
     
-    assets = session.exec(statement).all()
+    assets = (await session.exec(statement)).all()
     return assets
 
 
 @router.get("/assets/{asset_id}")
-def get_asset(asset_id: int, session: Session = Depends(get_session)) -> Asset:
+async def get_asset(asset_id: int, session: AsyncSession = Depends(get_session)) -> Asset:
     """获取单个资产"""
     statement = select(Asset).where(Asset.id == asset_id)
-    asset = session.exec(statement).first()
+    asset = (await session.exec(statement)).first()
     if not asset:
         raise HTTPException(status_code=404, detail="资产不存在")
     return asset
 
 
 @router.post("/assets")
-def create_asset(
+async def create_asset(
     asset_data: AssetCreate,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> Asset:
     """创建资产记录"""
     logger.info(f"创建资产请求: {asset_data}")
@@ -502,8 +519,8 @@ def create_asset(
         project_id=project_id
     )
     session.add(asset)
-    session.commit()
-    session.refresh(asset)
+    await session.commit()
+    await session.refresh(asset)
     logger.info(f"创建资产记录: {asset.name}, ID: {asset.id}")
     return asset
 
@@ -514,7 +531,7 @@ async def upload_asset(
     category: str = Form(...),
     sub_category: str = Form(...),
     project_id: Optional[int] = Form(None),
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> UploadResponse:
     """上传资产文件"""
     if category not in CATEGORY_DIRS:
@@ -532,7 +549,7 @@ async def upload_asset(
     
     if effective_project_id:
         project_statement = select(Project).where(Project.id == effective_project_id)
-        project = session.exec(project_statement).first()
+        project = (await session.exec(project_statement)).first()
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         base_path = Path(project.path)
@@ -547,8 +564,9 @@ async def upload_asset(
     safe_filename = file.filename.replace("..", "").replace("/", "_").replace("\\", "_")
     target_path = target_dir / safe_filename
     
-    with open(target_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    async with aiofiles.open(target_path, "wb") as buffer:
+        while chunk := await file.read(1024 * 1024):
+            await buffer.write(chunk)
     
     relative_path = str(target_path.relative_to(base_path))
     
@@ -559,11 +577,97 @@ async def upload_asset(
     )
 
 
+class BatchUploadResponse(BaseModel):
+    """批量上传响应数据"""
+    success_count: int
+    failed_count: int
+    results: List[dict]
+
+
+@router.post("/assets/batch-upload", response_model=BatchUploadResponse)
+async def batch_upload_assets(
+    files: List[UploadFile] = File(...),
+    category: str = Form(...),
+    sub_category: str = Form(...),
+    project_id: Optional[int] = Form(None),
+    session: AsyncSession = Depends(get_session)
+) -> BatchUploadResponse:
+    """批量上传资产文件"""
+    if category not in CATEGORY_DIRS:
+        raise HTTPException(status_code=400, detail=f"无效的资产类别，允许的类别: {list(CATEGORY_DIRS.keys())}")
+    
+    effective_project_id = project_id or get_current_project_id()
+    
+    if effective_project_id:
+        project_statement = select(Project).where(Project.id == effective_project_id)
+        project = (await session.exec(project_statement)).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        base_path = Path(project.path)
+    else:
+        ensure_projects_dir()
+        base_path = PROJECTS_DIR / "assets"
+    
+    category_dir_name = CATEGORY_DIRS[category]
+    target_dir = base_path / category_dir_name / sub_category
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    semaphore = asyncio.Semaphore(5)
+    
+    async def upload_single_file(file: UploadFile) -> dict:
+        """上传单个文件"""
+        async with semaphore:
+            try:
+                file_extension = Path(file.filename).suffix
+                if not validate_file_extension(category, file_extension):
+                    return {
+                        "filename": file.filename,
+                        "success": False,
+                        "error": f"文件类型不匹配"
+                    }
+                
+                safe_filename = file.filename.replace("..", "").replace("/", "_").replace("\\", "_")
+                target_path = target_dir / safe_filename
+                
+                async with aiofiles.open(target_path, "wb") as buffer:
+                    while chunk := await file.read(1024 * 1024):
+                        await buffer.write(chunk)
+                
+                relative_path = str(target_path.relative_to(base_path))
+                
+                return {
+                    "filename": file.filename,
+                    "success": True,
+                    "file_path": relative_path
+                }
+            except Exception as e:
+                logger.error(f"上传文件 {file.filename} 失败: {e}")
+                return {
+                    "filename": file.filename,
+                    "success": False,
+                    "error": str(e)
+                }
+    
+    tasks = [upload_single_file(file) for file in files]
+    results = await asyncio.gather(*tasks)
+    
+    success_count = sum(1 for r in results if r["success"])
+    failed_count = len(results) - success_count
+    
+    logger.info(f"批量上传完成: 成功 {success_count}, 失败 {failed_count}")
+    
+    return BatchUploadResponse(
+        success_count=success_count,
+        failed_count=failed_count,
+        results=results
+    )
+
+
 @router.delete("/assets/{asset_id}")
-def delete_asset(asset_id: int, session: Session = Depends(get_session)) -> dict:
+async def delete_asset(asset_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     """删除资产"""
     statement = select(Asset).where(Asset.id == asset_id)
-    asset = session.exec(statement).first()
+    asset = (await session.exec(statement)).first()
     
     if not asset:
         raise HTTPException(status_code=404, detail="资产不存在")
@@ -573,7 +677,7 @@ def delete_asset(asset_id: int, session: Session = Depends(get_session)) -> dict
         effective_project_id = asset.project_id or get_current_project_id()
         if effective_project_id:
             project_statement = select(Project).where(Project.id == effective_project_id)
-            project = session.exec(project_statement).first()
+            project = (await session.exec(project_statement)).first()
             if project:
                 file_path = Path(project.path) / asset.file_path
         else:
@@ -585,8 +689,8 @@ def delete_asset(asset_id: int, session: Session = Depends(get_session)) -> dict
     else:
         logger.warning(f"资产文件不存在: {file_path}")
     
-    session.delete(asset)
-    session.commit()
+    await session.delete(asset)
+    await session.commit()
     
     logger.info(f"删除资产记录: {asset.name}")
     return {"message": "资产已删除"}
@@ -598,14 +702,14 @@ class RenameRequest(BaseModel):
 
 
 @router.put("/assets/{asset_id}/rename")
-def rename_asset(
+async def rename_asset(
     asset_id: int,
     data: RenameRequest,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> Asset:
     """重命名资产"""
     statement = select(Asset).where(Asset.id == asset_id)
-    asset = session.exec(statement).first()
+    asset = (await session.exec(statement)).first()
     
     if not asset:
         raise HTTPException(status_code=404, detail="资产不存在")
@@ -615,7 +719,7 @@ def rename_asset(
         effective_project_id = get_current_project_id()
         if effective_project_id:
             project_statement = select(Project).where(Project.id == effective_project_id)
-            project = session.exec(project_statement).first()
+            project = (await session.exec(project_statement)).first()
             if project:
                 old_file_path = Path(project.path) / asset.file_path
     
@@ -632,18 +736,18 @@ def rename_asset(
     
     asset.name = data.new_name
     session.add(asset)
-    session.commit()
-    session.refresh(asset)
+    await session.commit()
+    await session.refresh(asset)
     
     logger.info(f"重命名资产: {asset.name}")
     return asset
 
 
 @router.get("/assets/{asset_id}/path")
-def get_asset_path(asset_id: int, session: Session = Depends(get_session)) -> dict:
+async def get_asset_path(asset_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     """获取资产文件绝对路径"""
     statement = select(Asset).where(Asset.id == asset_id)
-    asset = session.exec(statement).first()
+    asset = (await session.exec(statement)).first()
     
     if not asset:
         raise HTTPException(status_code=404, detail="资产不存在")
@@ -653,7 +757,7 @@ def get_asset_path(asset_id: int, session: Session = Depends(get_session)) -> di
         effective_project_id = get_current_project_id()
         if effective_project_id:
             project_statement = select(Project).where(Project.id == effective_project_id)
-            project = session.exec(project_statement).first()
+            project = (await session.exec(project_statement)).first()
             if project:
                 file_path = Path(project.path) / asset.file_path
     
@@ -664,10 +768,10 @@ def get_asset_path(asset_id: int, session: Session = Depends(get_session)) -> di
 
 
 @router.get("/assets/{asset_id}/content")
-def get_asset_content(asset_id: int, session: Session = Depends(get_session)) -> dict:
+async def get_asset_content(asset_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     """获取资产文件内容（仅支持文本类资产）"""
     statement = select(Asset).where(Asset.id == asset_id)
-    asset = session.exec(statement).first()
+    asset = (await session.exec(statement)).first()
     
     if not asset:
         raise HTTPException(status_code=404, detail="资产不存在")
@@ -680,7 +784,7 @@ def get_asset_content(asset_id: int, session: Session = Depends(get_session)) ->
         effective_project_id = get_current_project_id()
         if effective_project_id:
             project_statement = select(Project).where(Project.id == effective_project_id)
-            project = session.exec(project_statement).first()
+            project = (await session.exec(project_statement)).first()
             if project:
                 file_path = Path(project.path) / asset.file_path
     
@@ -688,7 +792,8 @@ def get_asset_content(asset_id: int, session: Session = Depends(get_session)) ->
         raise HTTPException(status_code=404, detail="文件不存在")
     
     try:
-        content = file_path.read_text(encoding="utf-8")
+        async with aiofiles.open(file_path, encoding="utf-8") as f:
+            content = await f.read()
         return {"content": content, "name": asset.name}
     except Exception as e:
         logger.error(f"读取文件内容失败: {e}")
@@ -696,10 +801,10 @@ def get_asset_content(asset_id: int, session: Session = Depends(get_session)) ->
 
 
 @router.get("/assets/{asset_id}/preview")
-def get_asset_preview(asset_id: int, session: Session = Depends(get_session)) -> FileResponse:
+async def get_asset_preview(asset_id: int, session: AsyncSession = Depends(get_session)) -> FileResponse:
     """获取资产预览（图片/视频）"""
     statement = select(Asset).where(Asset.id == asset_id)
-    asset = session.exec(statement).first()
+    asset = (await session.exec(statement)).first()
     
     if not asset:
         raise HTTPException(status_code=404, detail="资产不存在")
@@ -712,7 +817,7 @@ def get_asset_preview(asset_id: int, session: Session = Depends(get_session)) ->
         effective_project_id = asset.project_id or get_current_project_id()
         if effective_project_id:
             project_statement = select(Project).where(Project.id == effective_project_id)
-            project = session.exec(project_statement).first()
+            project = (await session.exec(project_statement)).first()
             if project:
                 file_path = Path(project.path) / asset.file_path
         else:
@@ -735,31 +840,19 @@ def get_asset_preview(asset_id: int, session: Session = Depends(get_session)) ->
             filename=f"{asset.name}_preview.jpg"
         )
     
+    loop = asyncio.get_event_loop()
+    
     if asset.category == "image":
         try:
-            with Image.open(file_path) as img:
-                img.thumbnail(PREVIEW_SIZE, Image.Resampling.LANCZOS)
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-                img.save(cache_path, "JPEG", quality=85)
-                logger.info(f"生成图片预览成功: {cache_path}")
+            await loop.run_in_executor(executor, _generate_image_preview_sync, file_path, cache_path)
+            logger.info(f"生成图片预览成功: {cache_path}")
         except Exception as e:
             logger.error(f"生成图片预览失败: {e}")
             raise HTTPException(status_code=500, detail=f"生成预览失败: {str(e)}")
     
     elif asset.category == "video":
         try:
-            cap = cv2.VideoCapture(str(file_path))
-            ret, frame = cap.read()
-            cap.release()
-            
-            if not ret or frame is None:
-                raise ValueError("无法读取视频帧")
-            
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(frame_rgb)
-            img.thumbnail(PREVIEW_SIZE, Image.Resampling.LANCZOS)
-            img.save(cache_path, "JPEG", quality=85)
+            await loop.run_in_executor(executor, _generate_video_preview_sync, file_path, cache_path)
             logger.info(f"生成视频预览成功: {cache_path}")
         except Exception as e:
             logger.error(f"生成视频预览失败: {e}")
@@ -772,6 +865,30 @@ def get_asset_preview(asset_id: int, session: Session = Depends(get_session)) ->
     )
 
 
+def _generate_image_preview_sync(file_path: Path, cache_path: Path):
+    """同步生成图片预览"""
+    with Image.open(file_path) as img:
+        img.thumbnail(PREVIEW_SIZE, Image.Resampling.LANCZOS)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        img.save(cache_path, "JPEG", quality=85)
+
+
+def _generate_video_preview_sync(file_path: Path, cache_path: Path):
+    """同步生成视频预览"""
+    cap = cv2.VideoCapture(str(file_path))
+    ret, frame = cap.read()
+    cap.release()
+    
+    if not ret or frame is None:
+        raise ValueError("无法读取视频帧")
+    
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    img = Image.fromarray(frame_rgb)
+    img.thumbnail(PREVIEW_SIZE, Image.Resampling.LANCZOS)
+    img.save(cache_path, "JPEG", quality=85)
+
+
 class MoveAssetRequest(BaseModel):
     """移动资产请求"""
     target_project_id: int
@@ -780,24 +897,24 @@ class MoveAssetRequest(BaseModel):
 
 
 @router.post("/assets/{asset_id}/move")
-def move_asset(
+async def move_asset(
     asset_id: int,
     data: MoveAssetRequest,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> Asset:
     """移动资产到新的项目/分类/子分类"""
     statement = select(Asset).where(Asset.id == asset_id)
-    asset = session.exec(statement).first()
+    asset = (await session.exec(statement)).first()
     
     if not asset:
         raise HTTPException(status_code=404, detail="资产不存在")
     
     source_project_id = asset.project_id
     source_project_statement = select(Project).where(Project.id == source_project_id)
-    source_project = session.exec(source_project_statement).first()
+    source_project = (await session.exec(source_project_statement)).first()
     
     target_project_statement = select(Project).where(Project.id == data.target_project_id)
-    target_project = session.exec(target_project_statement).first()
+    target_project = (await session.exec(target_project_statement)).first()
     
     if not target_project:
         raise HTTPException(status_code=404, detail="目标项目不存在")
@@ -837,8 +954,8 @@ def move_asset(
     asset.file_type = target_file_path.suffix.lstrip(".")
     
     session.add(asset)
-    session.commit()
-    session.refresh(asset)
+    await session.commit()
+    await session.refresh(asset)
     
     logger.info(f"移动资产: {source_file_path} -> {target_file_path}")
     return asset

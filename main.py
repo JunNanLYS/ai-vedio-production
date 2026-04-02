@@ -7,14 +7,50 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from database import init_db
 from loguru import logger
+from http_client import init_http_client, close_http_client
 from routers import workflows_router, assets_router, dashboard_router, orders_router, canvas_router, settings_router, image_generation_router
+import sys
+import os
+
+
+def setup_logging():
+    """配置日志输出到文件和控制台"""
+    log_dir = os.environ.get('LOG_DIR', os.path.join(os.path.dirname(__file__), 'logs'))
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+    
+    log_file = os.path.join(log_dir, 'backend_{time:YYYY-MM-DD}.log')
+    
+    logger.remove()
+    
+    logger.add(
+        sys.stdout,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level="DEBUG"
+    )
+    
+    logger.add(
+        log_file,
+        rotation="00:00",
+        retention="7 days",
+        encoding="utf-8",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        level="DEBUG"
+    )
+    
+    logger.info(f"日志文件目录: {log_dir}")
+
+
+setup_logging()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    init_db()
+    await init_db()
+    await init_http_client()
     yield
+    await close_http_client()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -67,4 +103,13 @@ def find_free_port(start_port: int = 8001, max_attempts: int = 100) -> int:
 if __name__ == "__main__":
     port = find_free_port()
     print(f"SERVER_PORT:{port}", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    
+    uvicorn_config = {
+        "app": app,
+        "host": "127.0.0.1",
+        "port": port,
+        "limit_concurrency": 100,
+        "timeout_keep_alive": 30,
+    }
+    
+    uvicorn.run(**uvicorn_config)

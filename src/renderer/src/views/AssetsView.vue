@@ -240,7 +240,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="h-full flex flex-col space-y-6 overflow-hidden">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-4">
         <div>
@@ -303,11 +303,11 @@ onMounted(async () => {
       </Card>
     </div>
 
-    <div v-else class="flex gap-6 min-h-[calc(100vh-220px)]">
+    <div v-else class="flex-1 flex gap-6 min-h-0">
       <Card
-        class="w-56 shrink-0 backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5"
+        class="w-56 shrink-0 backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5 flex flex-col overflow-hidden"
       >
-        <CardContent class="p-4">
+        <CardContent class="p-4 flex-1 overflow-auto min-h-0">
           <CategoryTree
             ref="categoryTreeRef"
             :selected-category="selectedCategory"
@@ -318,10 +318,10 @@ onMounted(async () => {
       </Card>
 
       <Card
-        class="flex-1 backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5 flex flex-col"
+        class="flex-1 backdrop-blur-xl bg-white/70 dark:bg-zinc-900/70 border-zinc-200/50 dark:border-zinc-800/50 rounded-2xl shadow-xl shadow-black/5 flex flex-col overflow-hidden"
       >
-        <CardContent class="p-0 flex-1 flex flex-col">
-          <div class="flex-1 overflow-auto">
+        <CardContent class="p-0 flex-1 flex flex-col h-0 min-h-[600px]">
+          <div class="flex-1 overflow-auto min-h-0">
             <AssetList
               :assets="filteredAssets"
               :selected-ids="selectedAssetIds"

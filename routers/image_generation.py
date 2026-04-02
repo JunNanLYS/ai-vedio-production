@@ -5,13 +5,15 @@ from typing import Optional, List
 from pathlib import Path
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 from pydantic import BaseModel
 from database import get_session
 from models.api_config import ApiConfig
 from models.asset import Asset
 from models.project import Project
 from loguru import logger
+from http_client import get_http_client
 
 router = APIRouter(prefix="/api", tags=["image-generation"])
 
@@ -21,11 +23,6 @@ KIE_TASK_STATUS_ENDPOINT = "https://api.kie.ai/api/v1/jobs/recordInfo"
 KIE_FILE_UPLOAD_BASE64_ENDPOINT = "https://kieai.redpandaai.co/api/file-base64-upload"
 KIE_FILE_UPLOAD_STREAM_ENDPOINT = "https://kieai.redpandaai.co/api/file-stream-upload"
 FILE_SIZE_THRESHOLD = 10 * 1024 * 1024
-
-_http_client = httpx.AsyncClient(
-    timeout=httpx.Timeout(120.0, connect=30.0),
-    verify=False
-)
 
 
 class ImageGenerationRequest(BaseModel):
@@ -72,12 +69,12 @@ class UploadImageResponse(BaseModel):
     file_size: int
 
 
-def get_kie_config(session: Session) -> tuple:
+async def get_kie_config(session: AsyncSession) -> tuple:
     token_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_KEY)
-    token_config = session.exec(token_statement).first()
+    token_config = (await session.exec(token_statement)).first()
     
     endpoint_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_ENDPOINT)
-    endpoint_config = session.exec(endpoint_statement).first()
+    endpoint_config = (await session.exec(endpoint_statement)).first()
     
     if not token_config or not token_config.config_value:
         raise HTTPException(status_code=400, detail="KIE API Token 未配置，请先在设置中配置 API Token")
@@ -89,19 +86,19 @@ def get_kie_config(session: Session) -> tuple:
 
 
 async def _async_post(url: str, headers: dict, data: dict) -> dict:
-    response = await _http_client.post(url, json=data, headers=headers)
+    response = await get_http_client().post(url, json=data, headers=headers)
     response.raise_for_status()
     return response.json()
 
 
 async def _async_get_json(url: str, headers: dict) -> dict:
-    response = await _http_client.get(url, headers=headers)
+    response = await get_http_client().get(url, headers=headers)
     response.raise_for_status()
     return response.json()
 
 
 async def _async_get_bytes(url: str, headers: dict) -> bytes:
-    response = await _http_client.get(url, headers=headers)
+    response = await get_http_client().get(url, headers=headers)
     response.raise_for_status()
     return response.content
 
@@ -109,9 +106,9 @@ async def _async_get_bytes(url: str, headers: dict) -> bytes:
 @router.post("/image-generation/create", response_model=ImageGenerationResponse)
 async def create_image_task(
     request: ImageGenerationRequest,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> ImageGenerationResponse:
-    api_token, api_endpoint = get_kie_config(session)
+    api_token, api_endpoint = await get_kie_config(session)
     
     payload = {
         "model": request.model,
@@ -165,9 +162,9 @@ async def create_image_task(
 @router.get("/image-generation/status/{task_id}", response_model=TaskStatusResponse)
 async def get_task_status(
     task_id: str,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> TaskStatusResponse:
-    api_token, _ = get_kie_config(session)
+    api_token, _ = await get_kie_config(session)
     
     headers = {
         "Authorization": f"Bearer {api_token}"
@@ -230,21 +227,21 @@ async def get_task_status(
 @router.post("/image-generation/download", response_model=DownloadResponse)
 async def download_generated_image(
     request: DownloadRequest,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> DownloadResponse:
     import uuid
     from pathlib import Path
     from models.project import Project
     from models.asset import Asset
     
-    api_token, _ = get_kie_config(session)
+    api_token, _ = await get_kie_config(session)
     
     if request.project_id > 0:
         project_statement = select(Project).where(Project.id == request.project_id)
     else:
         project_statement = select(Project).order_by(Project.created_at.desc())
     
-    project = session.exec(project_statement).first()
+    project = (await session.exec(project_statement)).first()
     
     if not project:
         raise HTTPException(status_code=400, detail="没有可用的项目")
@@ -276,8 +273,8 @@ async def download_generated_image(
             project_id=project.id
         )
         session.add(asset)
-        session.commit()
-        session.refresh(asset)
+        await session.commit()
+        await session.refresh(asset)
         
         logger.info(f"下载生成图片成功: {file_path} (项目: {project.name})")
         
@@ -333,7 +330,7 @@ async def _async_upload_file_base64(api_token: str, file_path: str, upload_path:
         "Content-Type": "application/json"
     }
     
-    response = await _http_client.post(
+    response = await get_http_client().post(
         KIE_FILE_UPLOAD_BASE64_ENDPOINT,
         json=payload,
         headers=headers
@@ -371,7 +368,7 @@ async def _async_upload_file_stream(api_token: str, file_path: str, upload_path:
         "Authorization": f"Bearer {api_token}"
     }
     
-    response = await _http_client.post(
+    response = await get_http_client().post(
         KIE_FILE_UPLOAD_STREAM_ENDPOINT,
         files=files,
         data=data,
@@ -399,15 +396,15 @@ async def _async_upload_file(api_token: str, file_path: str, upload_path: str = 
 @router.post("/image-generation/upload", response_model=UploadImageResponse)
 async def upload_reference_image(
     request: UploadImageRequest,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> UploadImageResponse:
-    api_token, _ = get_kie_config(session)
+    api_token, _ = await get_kie_config(session)
     
     file_path = request.file_path
     
     if request.asset_id > 0:
         asset_statement = select(Asset).where(Asset.id == request.asset_id)
-        asset = session.exec(asset_statement).first()
+        asset = (await session.exec(asset_statement)).first()
         
         if not asset:
             raise HTTPException(status_code=404, detail="资产不存在")
@@ -416,7 +413,7 @@ async def upload_reference_image(
             raise HTTPException(status_code=400, detail="资产未关联项目")
         
         project_statement = select(Project).where(Project.id == asset.project_id)
-        project = session.exec(project_statement).first()
+        project = (await session.exec(project_statement)).first()
         
         if not project:
             raise HTTPException(status_code=400, detail="资产所属项目不存在")

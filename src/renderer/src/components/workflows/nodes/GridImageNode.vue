@@ -6,7 +6,8 @@ import type {
   ImageGenModel,
   ImageAspectRatio,
   ImageResolution,
-  ImageOutputFormat
+  ImageOutputFormat,
+  GridType
 } from '@/types'
 import { assetsService } from '@/services/assets'
 import {
@@ -37,7 +38,7 @@ const emit = defineEmits<{
 }>()
 
 const MIN_WIDTH = 280
-const MIN_HEIGHT = 320
+const MIN_HEIGHT = 340
 const MAX_PROMPT_LENGTH = 20000
 const MAX_REFERENCE_IMAGES = 14
 const MAX_FILE_SIZE = 30 * 1024 * 1024
@@ -76,6 +77,13 @@ const OUTPUT_FORMAT_OPTIONS: { value: ImageOutputFormat; label: string }[] = [
   { value: 'jpg', label: 'JPG' }
 ]
 
+const GRID_OPTIONS: { value: GridType; label: string }[] = [
+  { value: 4, label: '4宫格 (2×2)' },
+  { value: 9, label: '9宫格 (3×3)' },
+  { value: 16, label: '16宫格 (4×4)' },
+  { value: 25, label: '25宫格 (5×5)' }
+]
+
 const promptTemplates = ref<Asset[]>([])
 const showTemplatePicker = ref(false)
 const loadingTemplates = ref(false)
@@ -100,6 +108,11 @@ const currentResolution = computed<ImageResolution>({
 const currentOutputFormat = computed<ImageOutputFormat>({
   get: () => props.node.outputFormat || 'png',
   set: (value) => emit('update', { outputFormat: value })
+})
+
+const currentGridType = computed<GridType>({
+  get: () => props.node.gridType || 4,
+  set: (value) => emit('update', { gridType: value })
 })
 
 const promptLength = computed(() => (props.node.prompt || '').length)
@@ -278,7 +291,7 @@ onMounted(() => {
   <div
     class="absolute rounded-xl border-2 cursor-move transition-shadow duration-200 overflow-visible pointer-events-auto group"
     :class="[
-      'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700',
+      'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700',
       selected ? 'ring-2 ring-blue-500 ring-offset-2 shadow-lg' : 'shadow-md hover:shadow-lg'
     ]"
     :style="nodeStyle"
@@ -287,7 +300,7 @@ onMounted(() => {
   >
     <div class="flex flex-col h-full">
       <div
-        class="flex items-center gap-2 px-3 py-2 border-b border-purple-200 dark:border-purple-800 bg-white/50 dark:bg-black/20"
+        class="flex items-center gap-2 px-3 py-2 border-b border-amber-200 dark:border-amber-800 bg-white/50 dark:bg-black/20"
       >
         <svg
           width="16"
@@ -296,16 +309,34 @@ onMounted(() => {
           fill="none"
           stroke="currentColor"
           stroke-width="1.5"
-          class="text-purple-600 dark:text-purple-400"
+          class="text-amber-600 dark:text-amber-400"
         >
-          <path d="M8 1L9.5 5.5L14 7L9.5 8.5L8 13L6.5 8.5L2 7L6.5 5.5L8 1Z" />
+          <rect x="1" y="1" width="6" height="6" rx="1" />
+          <rect x="9" y="1" width="6" height="6" rx="1" />
+          <rect x="1" y="9" width="6" height="6" rx="1" />
+          <rect x="9" y="9" width="6" height="6" rx="1" />
         </svg>
         <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate flex-1">
-          生成图片
+          宫格图
         </span>
       </div>
 
       <div class="flex-1 flex flex-col overflow-hidden bg-black/5 dark:bg-black/20 p-2 gap-2">
+        <!-- 宫格选择 -->
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">宫格</span>
+          <Select v-model="currentGridType">
+            <SelectTrigger class="h-7 text-xs flex-1">
+              <SelectValue placeholder="选择宫格" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="option in GRID_OPTIONS" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <!-- 模型选择 -->
         <div class="flex items-center gap-2">
           <span class="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">模型</span>
@@ -326,7 +357,7 @@ onMounted(() => {
           <textarea
             :value="node.prompt || ''"
             placeholder="输入提示词..."
-            class="w-full h-full text-sm bg-white dark:bg-zinc-800 border rounded-lg p-2 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 select-text"
+            class="w-full h-full text-sm bg-white dark:bg-zinc-800 border rounded-lg p-2 resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 select-text"
             :class="
               isPromptOverLimit
                 ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
@@ -353,7 +384,7 @@ onMounted(() => {
           <div
             v-for="ref in referenceImages"
             :key="ref.nodeId"
-            class="relative w-10 h-10 rounded border border-purple-300 dark:border-purple-700 overflow-hidden bg-white dark:bg-zinc-800 transition-transform duration-200 hover:scale-125 hover:z-10 hover:shadow-lg cursor-pointer"
+            class="relative w-10 h-10 rounded border border-amber-300 dark:border-amber-700 overflow-hidden bg-white dark:bg-zinc-800 transition-transform duration-200 hover:scale-125 hover:z-10 hover:shadow-lg cursor-pointer"
           >
             <img
               v-if="ref.previewUrl"
@@ -362,7 +393,7 @@ onMounted(() => {
               draggable="false"
             />
             <span
-              class="absolute bottom-0 right-0 bg-purple-500 text-white text-[10px] px-1 rounded-tl"
+              class="absolute bottom-0 right-0 bg-amber-500 text-white text-[10px] px-1 rounded-tl"
             >
               图{{ ref.order }}
             </span>
@@ -478,7 +509,7 @@ onMounted(() => {
           </div>
 
           <button
-            class="flex-1 text-xs bg-purple-500 hover:bg-purple-600 disabled:bg-purple-300 dark:disabled:bg-purple-800 text-white rounded-lg py-1.5 px-2 transition-colors flex items-center justify-center gap-1"
+            class="flex-1 text-xs bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 dark:disabled:bg-amber-800 text-white rounded-lg py-1.5 px-2 transition-colors flex items-center justify-center gap-1"
             :disabled="isPromptOverLimit"
             @click="handleGenerate"
           >

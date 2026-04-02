@@ -19,7 +19,8 @@ import {
   DialogFooter
 } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/toast/use-toast'
-import { Eye, EyeOff, Save, Trash2, Loader2, CheckCircle, XCircle, Key, Globe } from 'lucide-vue-next'
+import { Eye, EyeOff, Save, Trash2, Loader2, CheckCircle, XCircle, Key, Globe, FolderOpen, FileText } from 'lucide-vue-next'
+import BackendLogViewer from '@/components/backend/BackendLogViewer.vue'
 
 const apiToken = ref('')
 const apiEndpoint = ref('https://api.kie.ai/api/v1/jobs/createTask')
@@ -30,6 +31,7 @@ const isTesting = ref(false)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
 const showDeleteDialog = ref(false)
 const isConfigured = ref(false)
+const logDir = ref('')
 
 const loadConfig = async () => {
   isLoading.value = true
@@ -141,8 +143,30 @@ const handleDelete = async () => {
   }
 }
 
+const loadLogDir = async () => {
+  try {
+    logDir.value = await window.api.getLogDir()
+  } catch (error) {
+    console.error('获取日志目录失败:', error)
+  }
+}
+
+const openLogDir = async () => {
+  try {
+    await window.api.openLogDir()
+  } catch (error) {
+    console.error('打开日志目录失败:', error)
+    toast({
+      title: '打开失败',
+      description: '无法打开日志目录',
+      variant: 'destructive'
+    })
+  }
+}
+
 onMounted(() => {
   loadConfig()
+  loadLogDir()
 })
 </script>
 
@@ -314,5 +338,26 @@ onMounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Card class="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl border-zinc-200 dark:border-zinc-800">
+      <CardHeader>
+        <CardTitle class="flex items-center gap-2">
+          <FileText class="w-5 h-5 text-violet-500" />
+          调试日志
+        </CardTitle>
+        <CardDescription>
+          查看后端服务日志，用于排查问题。日志文件存储在：{{ logDir }}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div class="flex items-center gap-3 mb-4">
+          <Button variant="outline" @click="openLogDir">
+            <FolderOpen class="w-4 h-4 mr-2" />
+            打开日志目录
+          </Button>
+        </div>
+        <BackendLogViewer />
+      </CardContent>
+    </Card>
   </div>
 </template>

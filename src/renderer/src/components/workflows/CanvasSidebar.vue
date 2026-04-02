@@ -21,11 +21,11 @@ const expandedCategories = ref<Set<string>>(new Set(['prompt', 'image']))
 const previewUrls = ref<Map<number, string>>(new Map())
 
 const categories = [
-  { key: 'prompt', label: '提示词', icon: 'M12 2L2 7L12 12L22 7L12 2Z' },
-  { key: 'image', label: '图片', icon: 'M4 4H20V16H4V4Z' },
-  { key: 'audio', label: '音频', icon: 'M9 18V5L21 3V16' },
-  { key: 'video', label: '视频', icon: 'M4 4H20V16H4V4Z' },
-  { key: 'document', label: '文档', icon: 'M6 2H14L20 8V22H6V2Z' }
+  { key: 'prompt', label: '提示词', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
+  { key: 'image', label: '图片', icon: 'M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21' },
+  { key: 'audio', label: '音频', icon: 'M9 18V5l12-2v13M9 18c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3zM21 16c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3z' },
+  { key: 'video', label: '视频', icon: 'M23 7l-7 5 7 5V7zM14 5H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z' },
+  { key: 'document', label: '文档', icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6M16 13H8M16 17H8M10 9H8' }
 ]
 
 const filteredAssets = computed(() => {

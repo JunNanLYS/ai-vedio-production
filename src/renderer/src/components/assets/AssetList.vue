@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import {
   FileText,
   Image,
@@ -35,10 +35,13 @@ const emit = defineEmits<{
 }>()
 
 const previewUrls = ref<Map<number, string>>(new Map())
+const loadedAssetIds = ref<Set<number>>(new Set())
 const renamingId = ref<number | null>(null)
 const newName = ref('')
 const isDragging = ref(false)
 const subCategories = ref<{ id: number; name: string; category: string }[]>([])
+const cardRefs = ref<Map<number, HTMLElement | null>>(new Map())
+let observer: IntersectionObserver | null = null
 
 const fileExtensionToCategory: Record<string, string> = {
   txt: 'prompt',
@@ -163,19 +166,67 @@ const isSelected = (id: number): boolean => {
 const loadPreviewUrl = async (asset: Asset): Promise<void> => {
   if (
     (asset.category === 'image' || asset.category === 'video') &&
-    !previewUrls.value.has(asset.id)
+    !previewUrls.value.has(asset.id) &&
+    !loadedAssetIds.value.has(asset.id)
   ) {
+    loadedAssetIds.value.add(asset.id)
     try {
       const url = await assetsService.getPreviewUrl(asset.id)
       previewUrls.value.set(asset.id, url)
     } catch (error) {
       console.error('加载预览失败:', error)
+      loadedAssetIds.value.delete(asset.id)
     }
   }
 }
 
 const handlePreviewError = (assetId: number): void => {
   previewUrls.value.delete(assetId)
+}
+
+const initObserver = (): void => {
+  if (observer) return
+
+  observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const target = entry.target as HTMLElement
+          const assetId = Number(target.dataset.assetId)
+          const asset = props.assets.find((a) => a.id === assetId)
+          if (asset) {
+            loadPreviewUrl(asset)
+          }
+          observer?.unobserve(entry.target)
+        }
+      })
+    },
+    {
+      rootMargin: '100px'
+    }
+  )
+}
+
+const observeCard = (assetId: number, el: HTMLElement | null): void => {
+  if (!el || !observer) return
+  el.dataset.assetId = String(assetId)
+  observer.observe(el)
+}
+
+const setupCardRef = (assetId: number) => (el: any): void => {
+  const element = el as HTMLElement | null
+  if (element) {
+    cardRefs.value.set(assetId, element)
+    nextTick(() => {
+      observeCard(assetId, element)
+    })
+  } else {
+    const oldEl = cardRefs.value.get(assetId)
+    if (oldEl && observer) {
+      observer.unobserve(oldEl)
+    }
+    cardRefs.value.delete(assetId)
+  }
 }
 
 const handleDragOver = async (event: DragEvent): Promise<void> => {
@@ -235,24 +286,15 @@ const handleDrop = async (event: DragEvent): Promise<void> => {
   }
 }
 
-watch(
-  () => props.assets,
-  (newAssets) => {
-    newAssets.forEach((asset) => {
-      if (asset.category === 'image' || asset.category === 'video') {
-        loadPreviewUrl(asset)
-      }
-    })
-  },
-  { immediate: true }
-)
-
 onMounted(() => {
-  props.assets.forEach((asset) => {
-    if (asset.category === 'image' || asset.category === 'video') {
-      loadPreviewUrl(asset)
-    }
-  })
+  initObserver()
+})
+
+onUnmounted(() => {
+  if (observer) {
+    observer.disconnect()
+    observer = null
+  }
 })
 </script>
 
@@ -280,6 +322,7 @@ onMounted(() => {
       <div
         v-for="asset in assets"
         :key="asset.id"
+        :ref="setupCardRef(asset.id)"
         @click="handleCardClick(asset)"
         :class="
           cn(

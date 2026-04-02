@@ -3,7 +3,6 @@ import { ref, onMounted, computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { getBackendUrl } from '@/services/api'
-import BackendLogViewer from '@/components/backend/BackendLogViewer.vue'
 
 type ConnectionStatus = 'idle' | 'checking' | 'connected' | 'disconnected'
 
@@ -366,7 +365,5 @@ onMounted(async () => {
         </div>
       </CardContent>
     </Card>
-
-    <BackendLogViewer />
   </div>
 </template>

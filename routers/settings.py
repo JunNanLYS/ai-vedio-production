@@ -6,11 +6,13 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 from pydantic import BaseModel
 from database import get_session
 from models.api_config import ApiConfig
 from loguru import logger
+from cache import cache_manager, clear_cache
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
@@ -41,15 +43,31 @@ class ApiConfigResponse(BaseModel):
 
 
 @router.get("/settings/kie", response_model=KieConfigResponse)
-def get_kie_config(session: Session = Depends(get_session)) -> KieConfigResponse:
+async def get_kie_config(session: AsyncSession = Depends(get_session)) -> KieConfigResponse:
+    cache_key_token = f"kie_config:{KIE_API_KEY}"
+    cache_key_endpoint = f"kie_config:{KIE_API_ENDPOINT}"
+    
+    cached_token = cache_manager.get(cache_key_token)
+    cached_endpoint = cache_manager.get(cache_key_endpoint)
+    
+    if cached_token is not None and cached_endpoint is not None:
+        return KieConfigResponse(
+            api_token=cached_token,
+            api_endpoint=cached_endpoint,
+            is_configured=bool(cached_token)
+        )
+    
     token_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_KEY)
-    token_config = session.exec(token_statement).first()
+    token_config = (await session.exec(token_statement)).first()
     
     endpoint_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_ENDPOINT)
-    endpoint_config = session.exec(endpoint_statement).first()
+    endpoint_config = (await session.exec(endpoint_statement)).first()
     
     api_token = token_config.config_value if token_config else ""
     api_endpoint = endpoint_config.config_value if endpoint_config else "https://api.kie.ai/api/v1/jobs/createTask"
+    
+    cache_manager.set(cache_key_token, api_token)
+    cache_manager.set(cache_key_endpoint, api_endpoint)
     
     return KieConfigResponse(
         api_token=api_token,
@@ -59,12 +77,12 @@ def get_kie_config(session: Session = Depends(get_session)) -> KieConfigResponse
 
 
 @router.post("/settings/kie")
-def save_kie_config(
+async def save_kie_config(
     config_data: KieConfigRequest,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> dict:
     token_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_KEY)
-    token_config = session.exec(token_statement).first()
+    token_config = (await session.exec(token_statement)).first()
     
     if token_config:
         token_config.config_value = config_data.api_token
@@ -79,7 +97,7 @@ def save_kie_config(
         session.add(token_config)
     
     endpoint_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_ENDPOINT)
-    endpoint_config = session.exec(endpoint_statement).first()
+    endpoint_config = (await session.exec(endpoint_statement)).first()
     
     if endpoint_config:
         endpoint_config.config_value = config_data.api_endpoint
@@ -93,27 +111,31 @@ def save_kie_config(
         )
         session.add(endpoint_config)
     
-    session.commit()
+    await session.commit()
+    
+    clear_cache("kie_config:*")
     logger.info("KIE API 配置已保存")
     
     return {"message": "配置保存成功"}
 
 
 @router.delete("/settings/kie")
-def delete_kie_config(session: Session = Depends(get_session)) -> dict:
+async def delete_kie_config(session: AsyncSession = Depends(get_session)) -> dict:
     token_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_KEY)
-    token_config = session.exec(token_statement).first()
+    token_config = (await session.exec(token_statement)).first()
     
     if token_config:
-        session.delete(token_config)
+        await session.delete(token_config)
     
     endpoint_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_ENDPOINT)
-    endpoint_config = session.exec(endpoint_statement).first()
+    endpoint_config = (await session.exec(endpoint_statement)).first()
     
     if endpoint_config:
-        session.delete(endpoint_config)
+        await session.delete(endpoint_config)
     
-    session.commit()
+    await session.commit()
+    
+    clear_cache("kie_config:*")
     logger.info("KIE API 配置已删除")
     
     return {"message": "配置已删除"}
@@ -132,12 +154,12 @@ def _sync_test_api(url: str, headers: dict, data: dict, timeout: float = 30.0) -
 
 
 @router.post("/settings/kie/test")
-async def test_kie_config(session: Session = Depends(get_session)) -> dict:
+async def test_kie_config(session: AsyncSession = Depends(get_session)) -> dict:
     token_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_KEY)
-    token_config = session.exec(token_statement).first()
+    token_config = (await session.exec(token_statement)).first()
     
     endpoint_statement = select(ApiConfig).where(ApiConfig.config_key == KIE_API_ENDPOINT)
-    endpoint_config = session.exec(endpoint_statement).first()
+    endpoint_config = (await session.exec(endpoint_statement)).first()
     
     if not token_config or not token_config.config_value:
         raise HTTPException(status_code=400, detail="KIE API Token 未配置")

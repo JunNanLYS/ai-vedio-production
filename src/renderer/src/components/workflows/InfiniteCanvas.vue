@@ -31,6 +31,7 @@ const emit = defineEmits<{
   nodeOpenFile: [node: CanvasNode]
   nodeOpenFolder: [node: CanvasNode]
   nodeDeleteWithConfirm: [node: CanvasNode]
+  nodesPaste: [nodes: CanvasNode[], position: { x: number; y: number }]
 }>()
 
 const canvasRef = ref<HTMLDivElement | null>(null)
@@ -80,6 +81,9 @@ const isSelecting = ref(false)
 const selectionBox = ref<{ startX: number; startY: number; endX: number; endY: number } | null>(
   null
 )
+
+const clipboard = ref<CanvasNode[]>([])
+const mousePosition = ref({ x: 0, y: 0 })
 
 const canvasTransform = computed(() => {
   return `translate(${viewport.value.x}px, ${viewport.value.y}px) scale(${viewport.value.scale})`
@@ -152,6 +156,7 @@ const getConnectionLabelPosition = (
 const contextMenuItems = [
   { label: '上传图片', icon: 'upload', action: () => {} },
   { label: '生成图片', icon: 'sparkles', action: () => {} },
+  { label: '宫格图', icon: 'grid', action: () => {} },
   { label: '文本注释', icon: 'text', action: () => {} }
 ]
 
@@ -280,6 +285,13 @@ const handleContextMenu = (e: MouseEvent) => {
       contextMenuItems[2].action = () =>
         emit(
           'nodeCreate',
+          'grid-image',
+          contextMenuPosition.value.x,
+          contextMenuPosition.value.y
+        )
+      contextMenuItems[3].action = () =>
+        emit(
+          'nodeCreate',
           'text-annotation',
           contextMenuPosition.value.x,
           contextMenuPosition.value.y
@@ -291,6 +303,14 @@ const handleContextMenu = (e: MouseEvent) => {
 }
 
 const handleMouseMove = (e: MouseEvent) => {
+  if (containerRef.value) {
+    const rect = containerRef.value.getBoundingClientRect()
+    mousePosition.value = {
+      x: (e.clientX - rect.left - viewport.value.x) / viewport.value.scale,
+      y: (e.clientY - rect.top - viewport.value.y) / viewport.value.scale
+    }
+  }
+
   if (isPanning.value) {
     viewport.value.x = e.clientX - panStart.value.x
     viewport.value.y = e.clientY - panStart.value.y
@@ -405,8 +425,11 @@ const handleNodeUpdate = (id: string, updates: Partial<CanvasNode>) => {
   emit('nodeUpdate', id, updates)
 }
 
-const handleNodeDeleteWithConfirm = (node: CanvasNode) => {
-  emit('nodeDeleteWithConfirm', node)
+const handleNodeDeleteWithConfirm = (id: string) => {
+  const node = props.nodes.find((n) => n.id === id)
+  if (node) {
+    emit('nodeDeleteWithConfirm', node)
+  }
 }
 
 const startConnecting = (nodeId: string) => {
@@ -430,8 +453,8 @@ const finishConnecting = (targetId: string) => {
         ((sourceNode.type === 'upload-image' ||
           (sourceNode.type === 'asset' && sourceNode.category === 'image') ||
           sourceNode.type === 'generated-image') &&
-          targetNode.type === 'generate-image') ||
-        (sourceNode.type === 'generate-image' && targetNode.type === 'generated-image')
+          (targetNode.type === 'generate-image' || targetNode.type === 'grid-image')) ||
+        ((sourceNode.type === 'generate-image' || sourceNode.type === 'grid-image') && targetNode.type === 'generated-image')
 
       if (canConnect) {
         emit('connectionCreate', connectingFrom.value, targetId)
@@ -450,6 +473,29 @@ const handleKeyDown = (e: KeyboardEvent) => {
       (activeElement as HTMLElement).isContentEditable)
 
   if (isInputFocused) return
+
+  if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+    e.preventDefault()
+    if (selectedNodeIds.value.size > 0) {
+      const nodesToCopy = props.nodes.filter((n) => selectedNodeIds.value.has(n.id))
+      clipboard.value = JSON.parse(JSON.stringify(nodesToCopy))
+    } else if (selectedNodeId.value) {
+      const nodeToCopy = props.nodes.find((n) => n.id === selectedNodeId.value)
+      if (nodeToCopy) {
+        clipboard.value = [JSON.parse(JSON.stringify(nodeToCopy))]
+      }
+    }
+    return
+  }
+
+  if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+    e.preventDefault()
+    if (clipboard.value.length > 0) {
+      const nodesToPaste = JSON.parse(JSON.stringify(clipboard.value))
+      emit('nodesPaste', nodesToPaste, { ...mousePosition.value })
+    }
+    return
+  }
 
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (selectedConnectionId.value) {
@@ -565,7 +611,7 @@ const fitToNodes = () => {
 
 const getReferenceImages = (nodeId: string) => {
   const node = props.nodes.find((n) => n.id === nodeId)
-  if (!node || node.type !== 'generate-image') return undefined
+  if (!node || (node.type !== 'generate-image' && node.type !== 'grid-image')) return undefined
 
   const connections = props.connections.filter((c) => c.targetId === nodeId)
   return connections.map((c, index) => {
@@ -745,7 +791,7 @@ defineExpose({
 
       <div
         v-for="node in nodes.filter(
-          (n) => n.type === 'upload-image' || (n.type === 'asset' && n.category === 'image') || n.type === 'generate-image' || n.type === 'generated-image'
+          (n) => n.type === 'upload-image' || (n.type === 'asset' && n.category === 'image') || n.type === 'generate-image' || n.type === 'grid-image' || n.type === 'generated-image'
         )"
         :key="'connect-' + node.id"
         class="absolute pointer-events-auto"
@@ -756,7 +802,7 @@ defineExpose({
       >
         <button
           class="w-4 h-4 rounded-full text-white flex items-center justify-center transition-colors shadow-sm"
-          :class="node.type === 'generate-image' || node.type === 'generated-image' ? 'bg-green-500 hover:bg-green-600' : 'bg-purple-500 hover:bg-purple-600'"
+          :class="node.type === 'generate-image' || node.type === 'grid-image' || node.type === 'generated-image' ? 'bg-green-500 hover:bg-green-600' : 'bg-purple-500 hover:bg-purple-600'"
           @mousedown.stop
           @click.stop="startConnecting(node.id)"
         >
@@ -774,7 +820,7 @@ defineExpose({
       </div>
 
       <div
-        v-for="node in nodes.filter((n) => n.type === 'generate-image' || n.type === 'generated-image')"
+        v-for="node in nodes.filter((n) => n.type === 'generate-image' || n.type === 'grid-image')"
         :key="'target-' + node.id"
         class="absolute pointer-events-auto"
         :style="{

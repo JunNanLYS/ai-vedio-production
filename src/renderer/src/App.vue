@@ -26,6 +26,7 @@ const isReady = ref(false)
 const error = ref<string | null>(null)
 const showUpdateDialog = ref(false)
 const updateInfo = ref<UpdateInfo | null>(null)
+const loadingText = ref('正在启动后端服务...')
 
 function handleRetry() {
   window.location.reload()
@@ -44,6 +45,11 @@ function formatDate(dateStr?: string): string {
 function handleUpdateAvailable(info: UpdateInfo) {
   updateInfo.value = info
   showUpdateDialog.value = true
+  isReady.value = true
+}
+
+function handleUpdateNotAvailable() {
+  isReady.value = true
 }
 
 function goToUpdate() {
@@ -51,20 +57,37 @@ function goToUpdate() {
   window.location.hash = '/update'
 }
 
+function handlePrepareClose() {
+  setTimeout(() => {
+    window.api.allowClose()
+  }, 100)
+}
+
 onMounted(async () => {
   try {
     const port = await window.api.getBackendPort()
-    if (port) {
-      setBackendPort(port)
-      isReady.value = true
-    } else {
+    if (!port) {
       error.value = '后端服务启动失败'
+      return
     }
+    setBackendPort(port)
+    loadingText.value = '正在检查更新...'
   } catch (err) {
     error.value = err instanceof Error ? err.message : '未知错误'
+    return
   }
 
   window.api.onUpdateAvailable(handleUpdateAvailable)
+  window.api.onUpdateNotAvailable(handleUpdateNotAvailable)
+  window.api.onPrepareClose(handlePrepareClose)
+
+  await window.api.checkForUpdates(true)
+
+  setTimeout(() => {
+    if (!isReady.value) {
+      isReady.value = true
+    }
+  }, 5000)
 })
 </script>
 
@@ -78,7 +101,7 @@ onMounted(async () => {
       </div>
       <div v-else class="loading-state">
         <div class="spinner"></div>
-        <p class="loading-text">正在加载...</p>
+        <p class="loading-text">{{ loadingText }}</p>
       </div>
     </div>
   </div>
@@ -130,7 +153,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #18181b 0%, #27272a 100%);
+  background: #ffffff;
 }
 
 .loading-content {
@@ -147,7 +170,7 @@ onMounted(async () => {
 .spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
+  border: 3px solid rgba(0, 0, 0, 0.1);
   border-top-color: #3b82f6;
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -160,7 +183,7 @@ onMounted(async () => {
 }
 
 .loading-text {
-  color: #a1a1aa;
+  color: #52525b;
   font-size: 14px;
 }
 

@@ -1,5 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
+import { existsSync, appendFileSync, mkdirSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
 import { autoUpdater } from 'electron-updater'
@@ -18,6 +19,8 @@ const logSubscribers = new Set<BrowserWindow>()
 let mainWindow: BrowserWindow | null = null
 // 是否允许关闭窗口
 let allowClose = false
+// 日志文件路径
+let logFilePath: string | null = null
 // 更新信息
 let updateInfo: {
   available: boolean
@@ -33,6 +36,44 @@ let updateInfo: {
 }
 
 /**
+ * 获取日志目录路径（软件所在目录下的 logs 目录）
+ */
+function getLogDir(): string {
+  let baseDir: string
+  
+  if (is.dev) {
+    // 开发环境：使用项目根目录
+    baseDir = join(__dirname, '../..')
+  } else {
+    // 生产环境：使用软件所在目录（resourcesPath 的父目录）
+    baseDir = join(process.resourcesPath, '..')
+  }
+  
+  const logDir = join(baseDir, 'logs')
+  if (!existsSync(logDir)) {
+    mkdirSync(logDir, { recursive: true })
+  }
+  return logDir
+}
+
+/**
+ * 获取当前日期字符串 (YYYY-MM-DD)
+ */
+function getDateString(): string {
+  const now = new Date()
+  return now.toISOString().split('T')[0]
+}
+
+/**
+ * 初始化日志文件
+ */
+function initLogFile(): void {
+  const logDir = getLogDir()
+  logFilePath = join(logDir, `backend-${getDateString()}.log`)
+  console.log('[Log] 日志文件路径:', logFilePath)
+}
+
+/**
  * 添加日志并广播给订阅者
  */
 function appendLog(type: 'stdout' | 'stderr', content: string): void {
@@ -43,6 +84,15 @@ function appendLog(type: 'stdout' | 'stderr', content: string): void {
   backendLogs.push(logLine)
   if (backendLogs.length > MAX_LOGS) {
     backendLogs.shift()
+  }
+
+  // 写入文件
+  if (logFilePath) {
+    try {
+      appendFileSync(logFilePath, logLine + '\n', 'utf-8')
+    } catch (err) {
+      console.error('[Log] 写入日志文件失败:', err)
+    }
   }
 
   // 广播给所有订阅者
@@ -58,6 +108,7 @@ function appendLog(type: 'stdout' | 'stderr', content: string): void {
  */
 function startBackend(): void {
   const isDev = is.dev
+  const logDir = getLogDir()
 
   if (isDev) {
     // 开发环境：使用 uv run python main.py
@@ -68,7 +119,11 @@ function startBackend(): void {
     backendProcess = spawn('uv', ['run', 'python', 'main.py'], {
       cwd: projectRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: true
+      shell: true,
+      env: {
+        ...process.env,
+        LOG_DIR: logDir
+      }
     })
   } else {
     // 生产环境：使用 Nuitka 打包后的可执行文件
@@ -81,20 +136,33 @@ function startBackend(): void {
 
     // 检查 backend 目录下的可执行文件
     const backendPath = join(resourcesPath, 'backend', backendExeName)
+    const backendDir = join(resourcesPath, 'backend')
 
     // 数据库存储在用户数据目录，覆盖安装时不会被删除
     const dbPath = join(app.getPath('userData'), 'ai_video_production.db')
     console.log('[Backend] 数据库路径:', dbPath)
+    console.log('[Backend] 资源路径:', resourcesPath)
+    console.log('[Backend] 后端目录:', backendDir)
+    console.log('[Backend] 后端可执行文件路径:', backendPath)
 
-    console.log('[Backend] 生产环境后端路径:', backendPath)
+    // 检查后端可执行文件是否存在
+    if (!existsSync(backendPath)) {
+      const errorMsg = `后端可执行文件不存在: ${backendPath}`
+      console.error('[Backend]', errorMsg)
+      appendLog('stderr', errorMsg)
+      return
+    }
+
+    console.log('[Backend] 后端可执行文件存在，准备启动...')
 
     backendProcess = spawn(backendPath, [], {
-      cwd: join(resourcesPath, 'backend'),
+      cwd: backendDir,
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: false,
+      shell: true,
       env: {
         ...process.env,
-        DATABASE_URL: `sqlite:///${dbPath}`
+        DATABASE_URL: `sqlite+aiosqlite:///${dbPath}`,
+        LOG_DIR: logDir
       }
     })
   }
@@ -131,7 +199,9 @@ function startBackend(): void {
 
   // 处理进程错误
   backendProcess.on('error', (err) => {
-    console.error('[Backend] 进程启动失败:', err)
+    const errorMsg = `后端进程启动失败: ${err.message}`
+    console.error('[Backend]', errorMsg)
+    appendLog('stderr', errorMsg)
     backendProcess = null
   })
 }
@@ -402,10 +472,24 @@ ipcMain.handle('get-app-version', () => {
   return app.getVersion()
 })
 
+// IPC handler: 获取日志目录路径
+ipcMain.handle('get-log-dir', () => {
+  return getLogDir()
+})
+
+// IPC handler: 打开日志目录
+ipcMain.handle('open-log-dir', async () => {
+  const logDir = getLogDir()
+  await shell.openPath(logDir)
+})
+
 // Electron 完成初始化并准备创建浏览器窗口时调用此方法
 // 某些 API 只能在此事件发生后才能使用
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
+
+  // 初始化日志文件
+  initLogFile()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -417,9 +501,13 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  setTimeout(() => {
-    checkForUpdates(true)
-  }, 3000)
+  mainWindow?.webContents.on('did-finish-load', () => {
+    setTimeout(() => {
+      setImmediate(() => {
+        checkForUpdates(true)
+      })
+    }, 5000)
+  })
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

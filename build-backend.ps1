@@ -38,6 +38,7 @@ $NuitkaArgs = @(
     "--follow-imports",
     "--include-package=models",
     "--include-package=routers",
+    "--include-package=aiosqlite",
     "--windows-console-mode=attach",
     "--assume-yes-for-downloads",
     "--jobs=8",
@@ -85,6 +86,12 @@ if ($Mode -eq "standalone") {
     
     # 复制 database.py
     Copy-Item -Path (Join-Path $ProjectRoot "database.py") -Destination (Join-Path $DistDir "main.dist\") -Force
+    
+    # 复制 http_client.py
+    Copy-Item -Path (Join-Path $ProjectRoot "http_client.py") -Destination (Join-Path $DistDir "main.dist\") -Force
+    
+    # 复制 cache.py
+    Copy-Item -Path (Join-Path $ProjectRoot "cache.py") -Destination (Join-Path $DistDir "main.dist\") -Force
     
     Write-Host "资源文件复制完成！" -ForegroundColor Green
 }

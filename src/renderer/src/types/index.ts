@@ -121,7 +121,10 @@ export interface CreateAssetRequest {
 }
 
 // 画布节点类型
-export type CanvasNodeType = 'asset' | 'upload-image' | 'generate-image' | 'generated-image' | 'text-annotation'
+export type CanvasNodeType = 'asset' | 'upload-image' | 'generate-image' | 'generated-image' | 'text-annotation' | 'grid-image'
+
+// 宫格类型
+export type GridType = 4 | 9 | 16 | 25
 
 // 生成图片状态
 export type GeneratedImageStatus = 'pending' | 'generating' | 'success' | 'failed'
@@ -183,6 +186,9 @@ export interface CanvasNode {
   genError?: string
   sourceNodeId?: string
   genProgress?: number
+  genStatusText?: string
+  // grid-image 节点专用属性
+  gridType?: GridType
 }
 
 // 画布连接

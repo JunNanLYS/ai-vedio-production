@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 from pydantic import BaseModel
 
 from database import get_session
@@ -48,18 +49,18 @@ class OrderWorkflowResponse(BaseModel):
 
 
 @router.get("/workflows")
-def get_workflows(session: Session = Depends(get_session)) -> List[Workflow]:
+async def get_workflows(session: AsyncSession = Depends(get_session)) -> List[Workflow]:
     """获取全局工作流列表（order_id 为 null 的工作流）"""
     statement = select(Workflow).where(Workflow.order_id == None)
-    workflows = session.exec(statement).all()
+    workflows = (await session.exec(statement)).all()
     logger.info(f"获取全局工作流列表，共 {len(workflows)} 条")
     return workflows
 
 
 @router.post("/workflows")
-def create_workflow(
+async def create_workflow(
     workflow_data: WorkflowCreate,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> Workflow:
     """创建新的工作流"""
     workflow = Workflow(
@@ -69,49 +70,49 @@ def create_workflow(
         order_id=None
     )
     session.add(workflow)
-    session.commit()
-    session.refresh(workflow)
+    await session.commit()
+    await session.refresh(workflow)
     logger.info(f"创建工作流成功: {workflow.name}, ID: {workflow.id}")
     return workflow
 
 
 @router.delete("/workflows/{workflow_id}")
-def delete_workflow(
+async def delete_workflow(
     workflow_id: int,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> dict:
     """删除工作流"""
-    workflow = session.get(Workflow, workflow_id)
+    workflow = await session.get(Workflow, workflow_id)
     if not workflow:
         logger.warning(f"工作流不存在: {workflow_id}")
         raise HTTPException(status_code=404, detail="工作流不存在")
     
-    session.delete(workflow)
-    session.commit()
+    await session.delete(workflow)
+    await session.commit()
     logger.info(f"删除工作流成功: {workflow_id}")
     return {"message": "删除成功"}
 
 
 @router.get("/orders/{order_id}/workflow")
-def get_order_workflow(
+async def get_order_workflow(
     order_id: int,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> OrderWorkflowResponse:
     """获取订单的工作流，包含每个步骤下的产品列表"""
-    order = session.get(Order, order_id)
+    order = await session.get(Order, order_id)
     if not order:
         logger.warning(f"订单不存在: {order_id}")
         raise HTTPException(status_code=404, detail="订单不存在")
     
     statement = select(Workflow).where(Workflow.order_id == order_id)
-    workflow = session.exec(statement).first()
+    workflow = (await session.exec(statement)).first()
     
     if not workflow:
         logger.warning(f"订单 {order_id} 没有关联的工作流")
         raise HTTPException(status_code=404, detail="该订单没有关联的工作流")
     
     products_statement = select(Product).where(Product.order_id == order_id)
-    all_products = session.exec(products_statement).all()
+    all_products = (await session.exec(products_statement)).all()
     
     steps_with_products = []
     steps = workflow.steps if workflow.steps else []
@@ -135,13 +136,13 @@ def get_order_workflow(
 
 
 @router.post("/orders/{order_id}/products")
-def add_product_to_order(
+async def add_product_to_order(
     order_id: int,
     product_data: ProductCreate,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> Product:
     """添加产品到订单"""
-    order = session.get(Order, order_id)
+    order = await session.get(Order, order_id)
     if not order:
         logger.warning(f"订单不存在: {order_id}")
         raise HTTPException(status_code=404, detail="订单不存在")
@@ -151,20 +152,20 @@ def add_product_to_order(
         name=product_data.name
     )
     session.add(product)
-    session.commit()
-    session.refresh(product)
+    await session.commit()
+    await session.refresh(product)
     logger.info(f"添加产品到订单 {order_id}: {product.name}, ID: {product.id}")
     return product
 
 
 @router.put("/workflows/{workflow_id}")
-def update_workflow(
+async def update_workflow(
     workflow_id: int,
     workflow_data: WorkflowUpdate,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> Workflow:
     """更新工作流"""
-    workflow = session.get(Workflow, workflow_id)
+    workflow = await session.get(Workflow, workflow_id)
     if not workflow:
         logger.warning(f"工作流不存在: {workflow_id}")
         raise HTTPException(status_code=404, detail="工作流不存在")
@@ -177,26 +178,26 @@ def update_workflow(
         workflow.steps = workflow_data.steps
     
     session.add(workflow)
-    session.commit()
-    session.refresh(workflow)
+    await session.commit()
+    await session.refresh(workflow)
     logger.info(f"更新工作流成功: {workflow.name}, ID: {workflow.id}")
     return workflow
 
 
 @router.post("/products/{product_id}/move")
-def move_product(
+async def move_product(
     product_id: int,
     move_data: ProductMove,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> Product:
     """移动产品到上一步或下一步"""
-    product = session.get(Product, product_id)
+    product = await session.get(Product, product_id)
     if not product:
         logger.warning(f"产品不存在: {product_id}")
         raise HTTPException(status_code=404, detail="产品不存在")
     
     workflow_statement = select(Workflow).where(Workflow.order_id == product.order_id)
-    workflow = session.exec(workflow_statement).first()
+    workflow = (await session.exec(workflow_statement)).first()
     
     if not workflow:
         logger.warning(f"产品 {product_id} 所在订单没有工作流")
@@ -225,31 +226,31 @@ def move_product(
         raise HTTPException(status_code=400, detail="无效的移动方向，必须是 'next' 或 'prev'")
     
     session.add(product)
-    session.commit()
-    session.refresh(product)
+    await session.commit()
+    await session.refresh(product)
     logger.info(f"移动产品 {product_id} 到步骤 {product.current_step}")
     return product
 
 
 @router.post("/orders/{order_id}/apply-workflow/{workflow_id}")
-def apply_workflow_to_order(
+async def apply_workflow_to_order(
     order_id: int,
     workflow_id: int,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> Workflow:
     """将工作流模板应用到订单"""
-    order = session.get(Order, order_id)
+    order = await session.get(Order, order_id)
     if not order:
         logger.warning(f"订单不存在: {order_id}")
         raise HTTPException(status_code=404, detail="订单不存在")
     
-    template = session.get(Workflow, workflow_id)
+    template = await session.get(Workflow, workflow_id)
     if not template:
         logger.warning(f"工作流模板不存在: {workflow_id}")
         raise HTTPException(status_code=404, detail="工作流模板不存在")
     
     existing_statement = select(Workflow).where(Workflow.order_id == order_id)
-    existing = session.exec(existing_statement).first()
+    existing = (await session.exec(existing_statement)).first()
     if existing:
         logger.warning(f"订单 {order_id} 已有工作流")
         raise HTTPException(status_code=400, detail="该订单已有工作流")
@@ -264,7 +265,7 @@ def apply_workflow_to_order(
         order_id=order_id
     )
     session.add(new_workflow)
-    session.commit()
-    session.refresh(new_workflow)
+    await session.commit()
+    await session.refresh(new_workflow)
     logger.info(f"应用工作流模板 {workflow_id} 到订单 {order_id}")
     return new_workflow

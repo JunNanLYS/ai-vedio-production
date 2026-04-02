@@ -33,6 +33,7 @@ const MIN_HEIGHT = 160
 
 const status = computed<GeneratedImageStatus>(() => props.node.genStatus || 'pending')
 const errorMessage = computed(() => props.node.genError || '生成失败')
+const statusText = computed(() => props.node.genStatusText || '')
 
 const nodeStyle = computed(() => ({
   left: `${props.node.x}px`,
@@ -48,7 +49,7 @@ const statusConfig = computed(() => {
         bg: 'bg-zinc-50 dark:bg-zinc-900/20',
         border: 'border-zinc-300 dark:border-zinc-700',
         icon: 'clock',
-        text: '等待中',
+        text: statusText.value || '等待中',
         textColor: 'text-zinc-500 dark:text-zinc-400'
       }
     case 'generating':
@@ -56,7 +57,7 @@ const statusConfig = computed(() => {
         bg: 'bg-blue-50 dark:bg-blue-900/20',
         border: 'border-blue-300 dark:border-blue-700',
         icon: 'loading',
-        text: '生成中',
+        text: statusText.value || '生成中',
         textColor: 'text-blue-600 dark:text-blue-400'
       }
     case 'success':
@@ -64,7 +65,7 @@ const statusConfig = computed(() => {
         bg: 'bg-green-50 dark:bg-green-900/20',
         border: 'border-green-300 dark:border-green-700',
         icon: 'check',
-        text: '已完成',
+        text: statusText.value || '已完成',
         textColor: 'text-green-600 dark:text-green-400'
       }
     case 'failed':
@@ -72,7 +73,7 @@ const statusConfig = computed(() => {
         bg: 'bg-red-50 dark:bg-red-900/20',
         border: 'border-red-300 dark:border-red-700',
         icon: 'error',
-        text: '生成失败',
+        text: statusText.value || '生成失败',
         textColor: 'text-red-600 dark:text-red-400'
       }
     default:
@@ -409,22 +410,6 @@ onMounted(() => {
           <span class="text-sm text-zinc-500 dark:text-zinc-400">等待生成</span>
         </div>
       </div>
-    </div>
-
-    <div
-      class="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center transition-colors shadow-sm cursor-pointer opacity-0 group-hover:opacity-100"
-      title="输入连接点"
-    >
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 10 10"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-      >
-        <circle cx="5" cy="5" r="2" />
-      </svg>
     </div>
 
     <template v-if="selected">

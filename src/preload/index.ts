@@ -69,6 +69,9 @@ const api = {
     ipcRenderer.on('update-error', (_event, error) => callback(error))
   },
 
+  getLogDir: (): Promise<string> => ipcRenderer.invoke('get-log-dir'),
+  openLogDir: (): Promise<void> => ipcRenderer.invoke('open-log-dir'),
+
   platform: process.platform
 }
 

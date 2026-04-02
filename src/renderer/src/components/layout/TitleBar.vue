@@ -99,6 +99,16 @@ const handleClose = () => {
             fill="currentColor"
             class="text-white dark:text-zinc-900"
           />
+          <rect
+            x="0.5"
+            y="3.5"
+            width="8"
+            height="8"
+            stroke="currentColor"
+            stroke-width="1"
+            fill="none"
+            class="text-zinc-600 dark:text-zinc-300"
+          />
         </svg>
       </button>
       <button

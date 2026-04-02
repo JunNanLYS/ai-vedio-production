@@ -42,6 +42,8 @@ declare global {
       onUpdateProgress: (callback: (progress: DownloadProgress) => void) => void
       onUpdateDownloaded: (callback: () => void) => void
       onUpdateError: (callback: (error: string) => void) => void
+      getLogDir: () => Promise<string>
+      openLogDir: () => Promise<void>
       platform: NodeJS.Platform
     }
   }

@@ -2,7 +2,8 @@ import json
 from typing import List, Optional, Any
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -53,9 +54,9 @@ def get_current_project_id() -> Optional[int]:
 
 
 @router.get("/canvas")
-def get_canvas_list(
+async def get_canvas_list(
     project_id: Optional[int] = None,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> List[CanvasAssetResponse]:
     """获取画布列表"""
     effective_project_id = project_id or get_current_project_id()
@@ -64,7 +65,7 @@ def get_canvas_list(
         return []
     
     statement = select(CanvasAsset).where(CanvasAsset.project_id == effective_project_id)
-    canvas_list = session.exec(statement).all()
+    canvas_list = (await session.exec(statement)).all()
     
     return [
         CanvasAssetResponse(
@@ -83,14 +84,14 @@ def get_canvas_list(
 
 
 @router.get("/canvas/default-project")
-def get_default_canvas_project(
-    session: Session = Depends(get_session)
+async def get_default_canvas_project(
+    session: AsyncSession = Depends(get_session)
 ) -> dict:
     """获取默认画布保存项目"""
     project_id = get_current_project_id()
     
     if project_id:
-        project = session.get(Project, project_id)
+        project = await session.get(Project, project_id)
         if project:
             return {"project_id": project_id, "project_name": project.name}
     
@@ -98,12 +99,12 @@ def get_default_canvas_project(
 
 
 @router.post("/canvas/set-default-project/{project_id}")
-def set_default_canvas_project(
+async def set_default_canvas_project(
     project_id: int,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> dict:
     """设置默认画布保存项目"""
-    project = session.get(Project, project_id)
+    project = await session.get(Project, project_id)
     
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -116,9 +117,9 @@ def set_default_canvas_project(
 
 
 @router.post("/canvas")
-def save_canvas(
+async def save_canvas(
     data: CanvasSaveRequest,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> CanvasAssetResponse:
     """保存画布"""
     effective_project_id = data.project_id or get_current_project_id()
@@ -126,7 +127,7 @@ def save_canvas(
     if not effective_project_id:
         raise HTTPException(status_code=400, detail="请先选择一个项目")
     
-    project = session.get(Project, effective_project_id)
+    project = await session.get(Project, effective_project_id)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
     
@@ -149,16 +150,16 @@ def save_canvas(
     
     asset = None
     if data.asset_id:
-        asset = session.get(Asset, data.asset_id)
+        asset = await session.get(Asset, data.asset_id)
     
     if not asset:
-        existing_asset = session.exec(
+        existing_asset = (await session.exec(
             select(Asset).where(
                 Asset.project_id == effective_project_id,
                 Asset.category == "canvas",
                 Asset.name == f"{data.name}.json"
             )
-        ).first()
+        )).first()
         
         if existing_asset:
             asset = existing_asset
@@ -172,12 +173,12 @@ def save_canvas(
                 project_id=effective_project_id
             )
             session.add(asset)
-            session.commit()
-            session.refresh(asset)
+            await session.commit()
+            await session.refresh(asset)
     
-    existing_canvas = session.exec(
+    existing_canvas = (await session.exec(
         select(CanvasAsset).where(CanvasAsset.asset_id == asset.id)
-    ).first()
+    )).first()
     
     if existing_canvas:
         existing_canvas.name = data.name
@@ -186,8 +187,8 @@ def save_canvas(
         existing_canvas.viewport = data.viewport
         existing_canvas.updated_at = datetime.utcnow()
         session.add(existing_canvas)
-        session.commit()
-        session.refresh(existing_canvas)
+        await session.commit()
+        await session.refresh(existing_canvas)
         canvas = existing_canvas
     else:
         canvas = CanvasAsset(
@@ -199,8 +200,8 @@ def save_canvas(
             asset_id=asset.id
         )
         session.add(canvas)
-        session.commit()
-        session.refresh(canvas)
+        await session.commit()
+        await session.refresh(canvas)
     
     logger.info(f"保存画布: {data.name}, 项目ID: {effective_project_id}")
     
@@ -218,12 +219,12 @@ def save_canvas(
 
 
 @router.get("/canvas/{canvas_id}")
-def get_canvas(
+async def get_canvas(
     canvas_id: int,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> CanvasAssetResponse:
     """获取单个画布"""
-    canvas = session.get(CanvasAsset, canvas_id)
+    canvas = await session.get(CanvasAsset, canvas_id)
     
     if not canvas:
         raise HTTPException(status_code=404, detail="画布不存在")
@@ -242,13 +243,13 @@ def get_canvas(
 
 
 @router.put("/canvas/{canvas_id}")
-def update_canvas(
+async def update_canvas(
     canvas_id: int,
     data: CanvasUpdateRequest,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> CanvasAssetResponse:
     """更新画布"""
-    canvas = session.get(CanvasAsset, canvas_id)
+    canvas = await session.get(CanvasAsset, canvas_id)
     
     if not canvas:
         raise HTTPException(status_code=404, detail="画布不存在")
@@ -258,7 +259,7 @@ def update_canvas(
         canvas.name = data.name
         
         if canvas.project_id:
-            project = session.get(Project, canvas.project_id)
+            project = await session.get(Project, canvas.project_id)
             if project:
                 old_file = Path(project.path) / "canvases" / f"{old_name}.json"
                 new_file = Path(project.path) / "canvases" / f"{data.name}.json"
@@ -266,7 +267,7 @@ def update_canvas(
                     old_file.rename(new_file)
                 
                 if canvas.asset_id:
-                    asset = session.get(Asset, canvas.asset_id)
+                    asset = await session.get(Asset, canvas.asset_id)
                     if asset:
                         asset.name = f"{data.name}.json"
                         asset.file_path = f"canvases/{data.name}.json"
@@ -281,11 +282,11 @@ def update_canvas(
     
     canvas.updated_at = datetime.utcnow()
     session.add(canvas)
-    session.commit()
-    session.refresh(canvas)
+    await session.commit()
+    await session.refresh(canvas)
     
     if canvas.project_id and canvas.name:
-        project = session.get(Project, canvas.project_id)
+        project = await session.get(Project, canvas.project_id)
         if project:
             canvas_file = Path(project.path) / "canvases" / f"{canvas.name}.json"
             canvas_data = {
@@ -313,30 +314,30 @@ def update_canvas(
 
 
 @router.delete("/canvas/{canvas_id}")
-def delete_canvas(
+async def delete_canvas(
     canvas_id: int,
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ) -> dict:
     """删除画布"""
-    canvas = session.get(CanvasAsset, canvas_id)
+    canvas = await session.get(CanvasAsset, canvas_id)
     
     if not canvas:
         raise HTTPException(status_code=404, detail="画布不存在")
     
     if canvas.project_id:
-        project = session.get(Project, canvas.project_id)
+        project = await session.get(Project, canvas.project_id)
         if project:
             canvas_file = Path(project.path) / "canvases" / f"{canvas.name}.json"
             if canvas_file.exists():
                 canvas_file.unlink()
     
     if canvas.asset_id:
-        asset = session.get(Asset, canvas.asset_id)
+        asset = await session.get(Asset, canvas.asset_id)
         if asset:
-            session.delete(asset)
+            await session.delete(asset)
     
-    session.delete(canvas)
-    session.commit()
+    await session.delete(canvas)
+    await session.commit()
     
     logger.info(f"删除画布: {canvas.name}")
     return {"message": "画布已删除"}

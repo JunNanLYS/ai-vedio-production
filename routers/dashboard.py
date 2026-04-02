@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select, func
+from sqlmodel import select, func
+from sqlmodel.ext.asyncio.session import AsyncSession
 from pydantic import BaseModel
 
 from database import get_session
@@ -20,7 +21,7 @@ class DashboardStats(BaseModel):
 
 
 @router.get("/stats", response_model=DashboardStats, summary="获取统计数据")
-def get_dashboard_stats(session: Session = Depends(get_session)):
+async def get_dashboard_stats(session: AsyncSession = Depends(get_session)):
     """
     获取仪表盘统计数据
     - monthly_income: 本月所有订单的收入总和
@@ -33,7 +34,7 @@ def get_dashboard_stats(session: Session = Depends(get_session)):
         month_start = datetime(now.year, now.month, 1)
         
         statement = select(Order).where(Order.created_at >= month_start)
-        orders = session.exec(statement).all()
+        orders = (await session.exec(statement)).all()
         
         monthly_income = sum(order.income for order in orders)
         monthly_profit = sum(order.profit for order in orders)

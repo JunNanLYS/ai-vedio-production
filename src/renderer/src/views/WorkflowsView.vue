@@ -411,6 +411,7 @@ const handleNodeCreate = (type: string, x: number, y: number): void => {
   const nodeConfigs: Record<string, { width: number; height: number; name: string }> = {
     'upload-image': { width: 200, height: 150, name: '上传图片' },
     'generate-image': { width: 320, height: 420, name: '生成图片' },
+    'grid-image': { width: 320, height: 440, name: '宫格图' },
     'text-annotation': { width: 200, height: 120, name: '文本注释' }
   }
 
@@ -527,6 +528,8 @@ const handleNodeDeleteWithConfirm = (node: CanvasNode): void => {
         return '上传图片'
       case 'generate-image':
         return '生成图片'
+      case 'grid-image':
+        return '宫格图'
       case 'generated-image':
         return '生成结果'
       case 'text-annotation':
@@ -636,9 +639,28 @@ const handleNodesDelete = (ids: string[]): void => {
   )
 }
 
+const handleNodesPaste = (nodes: CanvasNode[], position: { x: number; y: number }): void => {
+  if (nodes.length === 0) return
+
+  const firstNode = nodes[0]
+  const offsetX = firstNode.x
+  const offsetY = firstNode.y
+
+  nodes.forEach((node) => {
+    const newNodeId = generateNodeId()
+    const newNode: CanvasNode = {
+      ...node,
+      id: newNodeId,
+      x: position.x + (node.x - offsetX),
+      y: position.y + (node.y - offsetY)
+    }
+    canvasNodes.value.push(newNode)
+  })
+}
+
 const handleNodeGenerate = async (id: string): Promise<void> => {
   const node = canvasNodes.value.find((n) => n.id === id)
-  if (!node || node.type !== 'generate-image') {
+  if (!node || (node.type !== 'generate-image' && node.type !== 'grid-image')) {
     return
   }
 
@@ -651,40 +673,14 @@ const handleNodeGenerate = async (id: string): Promise<void> => {
     return
   }
 
-  const referenceConnections = canvasConnections.value.filter(
-    (c) => c.targetId === id && c.type === 'reference'
-  )
-
-  const imageInput: string[] = []
-  for (const conn of referenceConnections) {
-    const sourceNode = canvasNodes.value.find((n) => n.id === conn.sourceId)
-    if (sourceNode?.assetId) {
-      try {
-        toast({
-          title: '上传参考图片',
-          description: '正在上传原图到服务器...'
-        })
-        const uploadResult = await imageGenerationService.uploadImage('', sourceNode.assetId)
-        imageInput.push(uploadResult.file_url)
-        toast({
-          title: '参考图片上传成功',
-          description: `已上传: ${uploadResult.file_name}`
-        })
-      } catch (error: any) {
-        toast({
-          title: '上传参考图片失败',
-          description: error.response?.data?.detail || error.message || '未知错误',
-          variant: 'destructive'
-        })
-        return
-      }
-    }
-  }
-
   const generatingNode = canvasNodes.value.find((n) => n.id === id)
   if (generatingNode) {
     ;(generatingNode as any).isGenerating = true
   }
+
+  const referenceConnections = canvasConnections.value.filter(
+    (c) => c.targetId === id && c.type === 'reference'
+  )
 
   const placeholderNodeId = generateNodeId()
   const placeholderNode: CanvasNode = {
@@ -696,7 +692,8 @@ const handleNodeGenerate = async (id: string): Promise<void> => {
     height: 200,
     name: '生成结果',
     genStatus: 'generating',
-    sourceNodeId: id
+    sourceNodeId: id,
+    genStatusText: referenceConnections.length > 0 ? '准备上传参考图...' : '正在创建任务...'
   }
   canvasNodes.value.push(placeholderNode)
 
@@ -708,9 +705,55 @@ const handleNodeGenerate = async (id: string): Promise<void> => {
   }
   canvasConnections.value.push(placeholderConnection)
 
+  const updatePlaceholderStatus = (text: string) => {
+    const placeholder = canvasNodes.value.find((n) => n.id === placeholderNodeId)
+    if (placeholder) {
+      placeholder.genStatusText = text
+    }
+  }
+
+  const imageInput: string[] = []
+  const totalRefImages = referenceConnections.filter((c) => {
+    const sourceNode = canvasNodes.value.find((n) => n.id === c.sourceId)
+    return sourceNode?.assetId
+  }).length
+
+  let uploadedCount = 0
+  for (const conn of referenceConnections) {
+    const sourceNode = canvasNodes.value.find((n) => n.id === conn.sourceId)
+    if (sourceNode?.assetId) {
+      uploadedCount++
+      updatePlaceholderStatus(`上传参考图 ${uploadedCount}/${totalRefImages}...`)
+      try {
+        const uploadResult = await imageGenerationService.uploadImage('', sourceNode.assetId)
+        imageInput.push(uploadResult.file_url)
+      } catch (error: any) {
+        canvasNodes.value = canvasNodes.value.filter((n) => n.id !== placeholderNodeId)
+        canvasConnections.value = canvasConnections.value.filter((c) => c.id !== placeholderConnection.id)
+        const sourceGenNode = canvasNodes.value.find((n) => n.id === id)
+        if (sourceGenNode) {
+          ;(sourceGenNode as any).isGenerating = false
+        }
+        toast({
+          title: '上传参考图片失败',
+          description: error.response?.data?.detail || error.message || '未知错误',
+          variant: 'destructive'
+        })
+        return
+      }
+    }
+  }
+
+  updatePlaceholderStatus('正在创建任务...')
+
   try {
+    let finalPrompt = node.prompt
+    if (node.type === 'grid-image' && node.gridType) {
+      finalPrompt = `布局：${node.gridType}宫格图;${node.prompt}`
+    }
+
     const createResult = await imageGenerationService.createTask({
-      prompt: node.prompt,
+      prompt: finalPrompt,
       model: node.genModel || 'nano-banana-2',
       aspect_ratio: node.aspectRatio || 'auto',
       resolution: node.resolution || '2k',
@@ -730,6 +773,8 @@ const handleNodeGenerate = async (id: string): Promise<void> => {
       description: `任务ID: ${taskId}`
     })
 
+    updatePlaceholderStatus('正在生成图片...')
+
     const maxDuration = 10 * 60 * 1000
     const startTime = Date.now()
     let pollCount = 0
@@ -742,10 +787,8 @@ const handleNodeGenerate = async (id: string): Promise<void> => {
       const status = await imageGenerationService.getStatus(taskId)
 
       if (status.status === 'success' && status.result_urls.length > 0) {
-        toast({
-          title: '图片生成成功',
-          description: `正在下载 ${status.result_urls.length} 张图片...`
-        })
+        const totalImages = status.result_urls.length
+        updatePlaceholderStatus(`下载图片 1/${totalImages}...`)
 
         const sourceGenNode = canvasNodes.value.find((n) => n.id === id)
         if (sourceGenNode) {
@@ -756,12 +799,14 @@ const handleNodeGenerate = async (id: string): Promise<void> => {
         const projectId = defaultCanvasProject.value.project_id || undefined
         
         for (let i = 0; i < status.result_urls.length; i++) {
+          updatePlaceholderStatus(`下载图片 ${i + 1}/${totalImages}...`)
           const resultUrl = status.result_urls[i]
           const downloadResult = await imageGenerationService.downloadImage(resultUrl, projectId)
           const previewUrl = await assetsService.getPreviewUrl(downloadResult.asset_id)
 
           if (i === 0 && firstPlaceholder) {
             firstPlaceholder.genStatus = 'success'
+            firstPlaceholder.genStatusText = '已完成'
             firstPlaceholder.localImagePath = previewUrl
             firstPlaceholder.assetId = downloadResult.asset_id
             firstPlaceholder.filePath = downloadResult.file_path
@@ -776,6 +821,7 @@ const handleNodeGenerate = async (id: string): Promise<void> => {
               height: 200,
               name: `生成结果 ${i + 1}`,
               genStatus: 'success',
+              genStatusText: '已完成',
               sourceNodeId: id,
               localImagePath: previewUrl,
               assetId: downloadResult.asset_id,
@@ -804,15 +850,12 @@ const handleNodeGenerate = async (id: string): Promise<void> => {
         throw new Error(status.error_message || '生成失败')
       }
 
-      if (pollCount % 10 === 0) {
+      if (pollCount % 3 === 0) {
         const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000)
         const statusText = status.status === 'waiting' ? '等待中' :
                           status.status === 'queuing' ? '排队中' :
                           status.status === 'generating' ? '生成中' : status.status
-        toast({
-          title: `任务${statusText}`,
-          description: `已等待 ${elapsedSeconds} 秒`
-        })
+        updatePlaceholderStatus(`${statusText} (${elapsedSeconds}秒)`)
       }
     }
 
@@ -828,6 +871,7 @@ const handleNodeGenerate = async (id: string): Promise<void> => {
     const failedPlaceholder = canvasNodes.value.find((n) => n.id === placeholderNodeId)
     if (failedPlaceholder) {
       failedPlaceholder.genStatus = 'failed'
+      failedPlaceholder.genStatusText = '生成失败'
       failedPlaceholder.genError = error.message || '未知错误'
     }
 
@@ -1392,6 +1436,7 @@ onBeforeUnmount(() => {
             @node-delete-with-confirm="handleNodeDeleteWithConfirm"
             @node-open-file="handleNodeOpenFile"
             @node-open-folder="handleNodeOpenFolder"
+            @nodes-paste="handleNodesPaste"
           />
         </div>
       </div>
